@@ -52,6 +52,12 @@ const fakeToken = "22222222-2222-4222-8222-222222222222";
 await page.route("**/api/transcribe/**", route => route.fulfill({ json: { id: fakeJob } }));
 await page.route(`**/api/jobs/${fakeJob}`, route => route.fulfill({ json: { id: fakeJob, kind: "transcribe", status: "done", result: { text: "Wrong Words", inference_seconds: 1, correction_id: fakeToken } } }));
 let correctionSaved = false;
+await page.route("**/api/session", async route => {
+  const response = await route.fetch();
+  const state = await response.json();
+  if (correctionSaved) state.profiles = state.profiles.map(profile => ({ ...profile, learning_pending: true }));
+  await route.fulfill({ json: state });
+});
 await page.route("**/api/corrections/**", route => {
   const body = route.request().postDataJSON();
   if (body.token !== fakeToken || body.text !== "The Correct Sentence") throw new Error("Correction payload is wrong");
@@ -65,8 +71,9 @@ await page.getByRole("button", { name: "Stop recording" }).click();
 await expect(page.getByLabel("Transcript", { exact: true })).toHaveValue("Wrong Words");
 await page.getByLabel("Transcript", { exact: true }).fill("The Correct Sentence");
 await page.getByRole("button", { name: "Save correction", exact: true }).click();
-await expect(page.getByText("Correction saved. Train your profile to apply it to future dictation.", { exact: true })).toBeVisible();
+await expect(page.getByText("Correction saved. Local learning is queued automatically.", { exact: true })).toBeVisible();
 if (!correctionSaved) throw new Error("Correction was not submitted");
+await expect(page.getByText("Correction saved. Automatic learning starts once you have 18 different sentences.", { exact: true })).toBeVisible();
 await page.getByRole("button", { name: "Camera off", exact: true }).click();
 await page.getByRole("button", { name: "Clear", exact: true }).click();
 await page.screenshot({ path: "../.impeccable/review/desktop.png", fullPage: true });

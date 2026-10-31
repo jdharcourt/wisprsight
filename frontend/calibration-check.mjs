@@ -12,6 +12,7 @@ const trainJob = "55555555-5555-4555-8555-555555555555";
 const profile = { id, name: "Automatic calibration test", samples: Array.from({ length: 21 }, (_, index) => ({ id: String(index), text: `Existing example ${String.fromCharCode(97 + index)} includes enough different words for calibration today`, frames: 80 })), calibration: null };
 let saved = 0;
 let trained = 0;
+await page.route("**/api/activity", route => route.fulfill({ json: { recording: true } }));
 await page.route("**/api/session", route => route.fulfill({ json: { csrf: "fixture", models_ready: true, profiles: [profile] } }));
 await page.route(`**/api/samples/${id}`, async route => { saved += 1; if (!route.request().headers()["x-reference"]) throw new Error("Missing reference label"); await route.fulfill({ json: { id: sampleJob } }); });
 await page.route(`**/api/jobs/${sampleJob}`, route => route.fulfill({ json: { id: sampleJob, kind: "sample", status: "done", result: { ...profile, samples: [...profile.samples, { id: "new", text: "Recorded calibration sentence", frames: 100 }] } } }));

@@ -164,5 +164,84 @@ def test_corrections_are_bound_to_the_recording_profile_and_consumed(
         profile["id"], token, "The correct reference sentence"
     )
     assert result["samples"][0]["text"] == "The correct reference sentence"
+    assert engine.read_profile(profile["id"])["learning_pending"]
     with pytest.raises(ValueError):
         engine.save_correction(profile["id"], token, "A second different sentence")
+
+
+def test_corrections_trigger_one_idle_learning_job_and_survive_reload(
+    client, monkeypatch
+):
+    import time
+    from types import SimpleNamespace
+
+    profile = engine.create_profile("Learning test")
+    profile["samples"] = [
+        {
+            "id": str(i),
+            "text": f"different sentence {chr(97 + i)} with enough words for this test",
+        }
+        for i in range(18)
+    ]
+    profile["learning_pending"] = True
+    engine.write_json(engine.profile_path(profile["id"]) / "profile.json", profile)
+    queued = []
+    monkeypatch.setattr(server, "executor", SimpleNamespace(submit=queued.append))
+    monkeypatch.setattr(
+        engine,
+        "train_profile",
+        lambda profile_id, job, cancelled: {
+            "accepted": False,
+            "message": "Previous model retained.",
+        },
+    )
+    monkeypatch.setattr(server, "last_activity", time.monotonic())
+    server.run_pending_learning()
+    assert not queued
+    monkeypatch.setattr(server, "last_activity", time.monotonic() - 31)
+    server.run_pending_learning()
+    server.run_pending_learning()
+    assert len(queued) == 1
+    state = client.get("/api/session").json()
+    assert state["auto_job"]["kind"] == "train"
+    assert "cancel" not in state["auto_job"]
+    assert client.post("/api/activity").status_code == 409
+    queued.pop()()
+    assert not engine.read_profile(profile["id"])["learning_pending"]
+    assert next(iter(server.jobs.values()))["status"] == "done"
+    assert client.get("/api/session").json()["auto_job"] is None
+
+
+def test_automatic_learning_waits_for_enough_data_and_stops_after_failure(
+    client, monkeypatch
+):
+    import time
+    from types import SimpleNamespace
+
+    profile = engine.create_profile("Learning test")
+    profile["learning_pending"] = True
+    engine.write_json(engine.profile_path(profile["id"]) / "profile.json", profile)
+    queued = []
+    monkeypatch.setattr(server, "executor", SimpleNamespace(submit=queued.append))
+    monkeypatch.setattr(server, "last_activity", time.monotonic() - 31)
+    server.run_pending_learning()
+    assert not queued
+    profile["samples"] = [
+        {
+            "id": str(i),
+            "text": f"different sentence {chr(97 + i)} with enough words for this test",
+        }
+        for i in range(18)
+    ]
+    engine.write_json(engine.profile_path(profile["id"]) / "profile.json", profile)
+
+    def fail(*args):
+        raise ValueError("Candidate could not be trained.")
+
+    monkeypatch.setattr(engine, "train_profile", fail)
+    server.run_pending_learning()
+    queued.pop()()
+    assert next(iter(server.jobs.values()))["status"] == "error"
+    assert not engine.read_profile(profile["id"])["learning_pending"]
+    server.run_pending_learning()
+    assert not queued

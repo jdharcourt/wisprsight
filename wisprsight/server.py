@@ -24,6 +24,7 @@ async def lifespan(app):
         while True:
             await asyncio.sleep(10)
             engine.expire_corrections()
+            run_pending_learning()
 
     task = asyncio.create_task(cleanup())
     try:
@@ -39,6 +40,7 @@ sessions = {}
 limits = defaultdict(deque)
 executor = ThreadPoolExecutor(max_workers=1)
 jobs = {}
+last_activity = time.monotonic()
 job_lock = threading.Lock()
 PORT = int(os.environ.get("WISPRSIGHT_PORT", "8765"))
 FRONTEND_ORIGIN = os.environ.get(
@@ -57,6 +59,7 @@ class CorrectionInput(BaseModel):
 
 @app.middleware("http")
 async def protect(request, call_next):
+    global last_activity
     origin = FRONTEND_ORIGIN
     if request.headers.get("host") not in {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}:
         response = JSONResponse({"detail": "Invalid host."}, status_code=400)
@@ -89,6 +92,8 @@ async def protect(request, call_next):
             )
         else:
             window.append(now)
+            if request.method not in {"GET", "HEAD"}:
+                last_activity = now
             response = await call_next(request)
     response.headers.update(
         {
@@ -116,6 +121,14 @@ def session(request: Request):
             "csrf": sessions[sid],
             "models_ready": engine.model_ready(),
             "profiles": engine.profiles(),
+            "auto_job": next(
+                (
+                    {key: value for key, value in job.items() if key != "cancel"}
+                    for job in jobs.values()
+                    if job.get("automatic") and job["status"] == "running"
+                ),
+                None,
+            ),
         }
     )
     response.set_cookie("session", sid, secure=True, httponly=True, samesite="strict")
@@ -177,8 +190,10 @@ async def media_body(request):
     return bytes(payload)
 
 
-def start_job(kind, operation, *args):
+def start_job(kind, operation, *args, automatic=False):
     with job_lock:
+        if automatic and time.monotonic() - last_activity < 30:
+            raise HTTPException(409, "Waiting for an idle moment to learn.")
         if any(job["status"] == "running" for job in jobs.values()):
             raise HTTPException(
                 409, "Another local task is running. Wait or cancel it first."
@@ -193,6 +208,7 @@ def start_job(kind, operation, *args):
             "message": "Processing locally…",
             "progress": 0,
             "cancel": cancelled,
+            "automatic": automatic,
         }
         jobs[job_id] = job
 
@@ -203,19 +219,70 @@ def start_job(kind, operation, *args):
                 if kind == "train"
                 else operation(*args)
             )
-            job["result"] = result
-            job["status"] = "cancelled" if cancelled.is_set() else "done"
+            outcome = {
+                "result": result,
+                "status": "cancelled" if cancelled.is_set() else "done",
+            }
         except ValueError as error:
-            job.update(status="error", message=str(error))
+            outcome = {"status": "error", "message": str(error)}
         except Exception:
             logging.error("Local %s task failed", kind)
-            job.update(
-                status="error",
-                message="Local processing failed. Check model installation and try a shorter, well-lit recording.",
-            )
+            outcome = {
+                "status": "error",
+                "message": "Local processing failed. Check model installation and try a shorter, well-lit recording.",
+            }
+
+        finally:
+            if kind == "train" and automatic:
+                try:
+                    profile = engine.read_profile(args[0])
+                    profile["learning_pending"] = False
+                    engine.write_json(
+                        engine.profile_path(args[0]) / "profile.json", profile
+                    )
+                except (ValueError, OSError):
+                    logging.error("Could not update automatic learning state")
+            job.update(outcome)
 
     executor.submit(run)
     return {"id": job_id}
+
+
+def run_pending_learning():
+    if time.monotonic() - last_activity < 30:
+        return
+    with job_lock:
+        if any(job["status"] == "running" for job in jobs.values()):
+            return
+    for profile in engine.profiles():
+        if not profile.get("learning_pending"):
+            continue
+        if (
+            len(
+                {
+                    " ".join(engine.normalize(sample["text"]))
+                    for sample in profile["samples"]
+                }
+            )
+            < 18
+        ):
+            continue
+        try:
+            start_job("train", engine.train_profile, profile["id"], automatic=True)
+        except HTTPException as error:
+            if error.status_code != 409:
+                raise
+        return
+
+
+@app.post("/api/activity")
+def activity():
+    with job_lock:
+        if any(job["status"] == "running" for job in jobs.values()):
+            raise HTTPException(
+                409, "Wait for the current local task or cancel it before recording."
+            )
+    return {"recording": True}
 
 
 @app.post("/api/transcribe/{profile_id}")

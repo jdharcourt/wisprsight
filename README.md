@@ -31,7 +31,7 @@ To add your own material, choose Add a custom sentence instead. You can type/edi
 
 Personal training runs on the CPU to avoid Metal command-buffer failures during longer backward passes. Dictation retains automatic GPU acceleration.
 
-To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example for the next training update. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
+To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example, and local CPU learning queues automatically after 30 seconds without recording. Corrections are batched, and at least 18 different sentences are required. Training progress appears automatically; you can cancel it. Dictation pauses while training uses the local model. A candidate replaces the current model only when reserved-sentence validation improves. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
 
 A personal model replaces your current model only after a clear validation improvement across at least 60 reference words. Otherwise your existing model stays active. Profiles and calibration data remain in `.local/profiles/`; deleting a profile removes its examples and personal weights. The microphone is never requested for ordinary dictation.
 

@@ -267,6 +267,8 @@ def save_correction(profile_id, token, text):
             "This recording has expired. Record the sentence again to save a correction."
         )
     result = store_sample(pending["crops"], profile_id, text)
+    result["learning_pending"] = True
+    write_json(profile_path(profile_id) / "profile.json", result)
     with _correction_lock:
         _corrections.pop(token, None)
     return result
@@ -476,6 +478,7 @@ def train_profile(profile_id, job, cancelled):
         else "Previous model kept. Add more varied sentences; at least sixty validation words and a clear improvement are required.",
     }
     profile["calibration"] = result
+    profile["learning_pending"] = False
     write_json(profile_path(profile_id) / "profile.json", profile)
     del optimizer
     gc.collect()
