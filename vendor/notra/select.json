@@ -1,0 +1,31 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "notra-select",
+  "title": "Select",
+  "description": "A Base UI select with a Depth button trigger and a scrollable popup below it.",
+  "dependencies": [
+    "@base-ui/react",
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "select",
+    "https://ui.usenotra.com/r/notra-button.json",
+    "https://ui.usenotra.com/r/notra-dropdown-menu.json"
+  ],
+  "files": [
+    {
+      "path": "registry/notra/select/components/select.tsx",
+      "content": "\"use client\";\n\nimport { Select as SelectPrimitive } from \"@base-ui/react/select\";\nimport { cn } from \"cn\";\nimport { ChevronsUpDownIcon } from \"lucide-react\";\nimport type { ComponentProps } from \"react\";\n\nimport {\n  Select,\n  SelectGroup,\n  SelectItem as ShadcnSelectItem,\n  SelectLabel as ShadcnSelectLabel,\n  SelectScrollDownButton,\n  SelectScrollUpButton,\n  SelectSeparator as ShadcnSelectSeparator,\n  SelectValue,\n} from \"@/components/ui/select\";\n\nimport { buttonVariants } from \"../../button/components/button\";\nimport {\n  DROPDOWN_ITEM_CLASS_NAME,\n  DROPDOWN_POPUP_CLASS_NAME,\n} from \"../../dropdown-menu/constants/dropdown-menu\";\nimport { SELECT_COLLISION_AVOIDANCE } from \"../constants/select\";\n\nfunction SelectTrigger({\n  className,\n  size = \"default\",\n  variant = \"default\",\n  children,\n  ...props\n}: SelectPrimitive.Trigger.Props & {\n  size?: \"sm\" | \"default\";\n  variant?: \"default\" | \"ghost\";\n}) {\n  return (\n    <SelectPrimitive.Trigger\n      data-size={size}\n      data-slot=\"select-trigger\"\n      data-variant={variant}\n      className={buttonVariants({\n        variant: variant === \"ghost\" ? \"ghost\" : \"outline\",\n        size: size === \"sm\" ? \"sm\" : \"default\",\n        className: cn(\n          \"data-[placeholder]:text-muted-foreground w-fit justify-between font-normal transition-[background-color,border-color,box-shadow,filter] active:scale-100 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 motion-reduce:transition-none\",\n          className\n        ),\n      })}\n      {...props}\n    >\n      {children}\n      <SelectPrimitive.Icon\n        render={\n          <ChevronsUpDownIcon className=\"text-muted-foreground pointer-events-none size-4\" />\n        }\n      />\n    </SelectPrimitive.Trigger>\n  );\n}\n\nfunction SelectContent({\n  className,\n  children,\n  side = \"bottom\",\n  sideOffset = 4,\n  align = \"start\",\n  alignOffset = 0,\n  alignItemWithTrigger = false,\n  ...props\n}: SelectPrimitive.Popup.Props &\n  Pick<\n    SelectPrimitive.Positioner.Props,\n    \"align\" | \"alignOffset\" | \"side\" | \"sideOffset\" | \"alignItemWithTrigger\"\n  >) {\n  return (\n    <SelectPrimitive.Portal>\n      <SelectPrimitive.Positioner\n        align={align}\n        alignItemWithTrigger={alignItemWithTrigger}\n        alignOffset={alignOffset}\n        className=\"isolate z-50\"\n        collisionAvoidance={SELECT_COLLISION_AVOIDANCE}\n        side={side}\n        sideOffset={sideOffset}\n      >\n        <SelectPrimitive.Popup\n          className={cn(\n            DROPDOWN_POPUP_CLASS_NAME,\n            \"relative isolate w-(--anchor-width) min-w-36 p-0\",\n            className\n          )}\n          data-align-trigger={alignItemWithTrigger}\n          data-slot=\"select-content\"\n          {...props}\n        >\n          <SelectScrollUpButton />\n          <SelectPrimitive.List className=\"p-1\">\n            {children}\n          </SelectPrimitive.List>\n          <SelectScrollDownButton />\n        </SelectPrimitive.Popup>\n      </SelectPrimitive.Positioner>\n    </SelectPrimitive.Portal>\n  );\n}\n\nfunction SelectLabel({\n  className,\n  ...props\n}: ComponentProps<typeof ShadcnSelectLabel>) {\n  return (\n    <ShadcnSelectLabel\n      className={cn(\"px-2.5 py-1.5 font-medium\", className)}\n      {...props}\n    />\n  );\n}\n\nfunction SelectItem({\n  className,\n  ...props\n}: ComponentProps<typeof ShadcnSelectItem>) {\n  return (\n    <ShadcnSelectItem\n      className={cn(\n        DROPDOWN_ITEM_CLASS_NAME,\n        \"w-full pr-8 *:last:right-2.5\",\n        className\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction SelectSeparator({\n  className,\n  ...props\n}: ComponentProps<typeof ShadcnSelectSeparator>) {\n  return <ShadcnSelectSeparator className={cn(\"mx-2\", className)} {...props} />;\n}\n\nexport {\n  Select,\n  SelectContent,\n  SelectGroup,\n  SelectItem,\n  SelectLabel,\n  SelectScrollDownButton,\n  SelectScrollUpButton,\n  SelectSeparator,\n  SelectTrigger,\n  SelectValue,\n};\n",
+      "type": "registry:component",
+      "target": "components/select/components/select.tsx"
+    },
+    {
+      "path": "registry/notra/select/constants/select.ts",
+      "content": "export const SELECT_COLLISION_AVOIDANCE = {\n  side: \"flip\",\n  align: \"shift\",\n} as const;\n\nexport const FREQUENCY_OPTIONS = [\n  { value: \"daily\", label: \"Daily\" },\n  { value: \"weekly\", label: \"Weekly\" },\n  { value: \"monthly\", label: \"Monthly\" },\n  { value: \"custom\", label: \"Custom\" },\n];\n",
+      "type": "registry:lib",
+      "target": "components/select/constants/select.ts"
+    }
+  ],
+  "type": "registry:component"
+}

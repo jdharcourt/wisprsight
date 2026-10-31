@@ -13,7 +13,7 @@ uv sync --locked
 npm --prefix frontend ci
 npm --prefix frontend run build
 uv run wisprsight download-models
-uv run wisprsight serve
+uv run wisprsight dev
 ```
 
 Open [https://localhost:8765](https://localhost:8765). The app generates a local HTTPS certificate at `.local/localhost.pem` without changing your system trust settings. For camera access, trust this specific development certificate locally using your browser/macOS certificate settings. Never disable certificate verification globally. The certificate expires after 30 days; remove the two local certificate files and restart to regenerate it.
@@ -22,19 +22,22 @@ The first model download is about 1.2 GB, plus the Python environment and downlo
 
 ## Calibrate in the browser
 
-1. Create a profile. Every new profile starts with the same pretrained visual model.
-2. In Calibration, record a spoken reference with camera and microphone enabled, or type/use a suggested sentence. Review the reference text; microphone transcription uses local Whisper.
-3. Record the same sentence silently, then choose Save example. Only mouth crops and the approved reference are saved.
-4. Repeat with at least 18 different sentences; 30–50 varied examples are a better starting point. Keep each silent take under seven seconds.
-5. Choose Train locally. Six or more distinct sentences are reserved for validation and never used for fitting. Training runs on your Mac and may take several minutes.
+1. Create a profile, open Calibration, and choose Start calibration.
+2. Mouth the displayed sentence silently. Local camera tracking detects articulation followed by a pause; the take saves and the next sentence slides into view. Use Done if you want to end a take manually.
+3. Complete the remaining prompts toward 24 different sentences. The camera turns off and local training starts automatically after the final sentence.
+4. Review the result, then choose Start dictating.
+
+To add your own material, choose Add a custom sentence instead. You can type/edit a reference or record a spoken reference with the microphone; local Whisper supplies a draft label. Review it, record a silent take, then save it.
+
+To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example for the next training update. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
 
 A personal model replaces your current model only after a clear validation improvement across at least 60 reference words. Otherwise your existing model stays active. Profiles and calibration data remain in `.local/profiles/`; deleting a profile removes its examples and personal weights. The microphone is never requested for ordinary dictation.
 
 ## Status and evidence
 
-Implemented: browser capture, editable transcription, profiles, local spoken-reference labeling, silent training examples, visual-frontend adaptation and validation-gated activation.
+Implemented: actual Notra UI controls/toasts/sidebar/cards, full-screen automatic calibration, editable Title Case transcriptions, correction examples, local spoken-reference labels, personal visual-frontend training and validation-gated activation.
 
-A four-second public-domain video was decoded on this M2 using MPS, and one supervised training step updated 11.2 million frontend parameters. This verifies execution only. Personal silent-speech accuracy is not measured, and no personal calibration has been trained yet. See [verification](docs/verification.md) for exact results and limits.
+A four-second public-domain video was decoded on this M2 using MPS, and one supervised training step updated 11.2 million frontend parameters. This verifies execution only. Personal silent-speech accuracy is not measured, and full personal accuracy remains unmeasured. See [verification](docs/verification.md) for exact results and limits.
 
 ## Requirements
 
@@ -46,16 +49,19 @@ A four-second public-domain video was decoded on this M2 using MPS, and one supe
 
 ## Development
 
+`uv run wisprsight dev` runs verified loopback HTTPS, React Fast Refresh and Python reloads at https://localhost:8765. Finish active training before changing Python source. Use `uv run wisprsight serve` after a dashboard build for a stable session without development reloads. Each development port has a separate dependency cache.
+
 See the [implementation plan](docs/plan.md), [product brief](PRODUCT.md) and [model research](docs/research.md). The native Mac app is the next delivery stage after evaluating real personal silent recordings.
 
 ```sh
 uv run pytest -q
 uv run ruff check wisprsight tests scripts
 npm --prefix frontend run build
+node --experimental-strip-types --test frontend/src/calibration-endpoint.test.ts
 cd frontend
 node browser-check.mjs
 ```
 
-The browser check needs Google Chrome and the local server running. It uses Chrome's synthetic camera, creates/deletes a temporary profile, and never activates the real camera or microphone.
+Run browser checks against an isolated profile store using `WISPRSIGHT_DATA=/private/tmp/wisprsight-tests uv run wisprsight dev --port 8770`, then `WISPRSIGHT_TEST_URL=https://localhost:8770 node browser-check.mjs` from frontend. The checks need Google Chrome. It uses Chrome's synthetic camera, creates/deletes a temporary profile, and never activates the real camera or microphone.
 
 Model code, weights, and training data have separate licensing considerations. LRS3-derived visual weights are treated as noncommercial research assets pending review. No commercial distribution rights are implied. Third-party attribution is in [NOTICE](NOTICE); no model weights or personal recordings belong in this repository.

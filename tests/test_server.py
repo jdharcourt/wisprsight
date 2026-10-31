@@ -13,6 +13,7 @@ def client(tmp_path, monkeypatch):
     server.sessions.clear()
     server.limits.clear()
     server.jobs.clear()
+    engine._corrections.clear()
     with TestClient(server.app, base_url="https://localhost:8765") as client:
         csrf = client.get("/api/session").json()["csrf"]
         client.headers["x-csrf-token"] = csrf
@@ -136,3 +137,32 @@ def test_transcripts_use_title_case_and_preserve_apostrophes(client, monkeypatch
         ),
     )
     assert engine.transcribe(b"video", profile["id"])["text"] == "I'm In New York City"
+
+
+def test_corrections_are_bound_to_the_recording_profile_and_consumed(
+    client, monkeypatch
+):
+    from types import SimpleNamespace
+
+    profile = engine.create_profile("Ada")
+    other = engine.create_profile("Grace")
+    monkeypatch.setattr(engine, "verify_models", lambda: None)
+    monkeypatch.setattr(
+        engine, "extract_video", lambda payload: np.zeros((50, 96, 96), dtype=np.uint8)
+    )
+    monkeypatch.setattr(
+        engine,
+        "make_reader",
+        lambda profile_id: SimpleNamespace(
+            read=lambda crops: ("A WRONG SENTENCE", 1), enc_device="cpu"
+        ),
+    )
+    token = engine.transcribe(b"video", profile["id"])["correction_id"]
+    with pytest.raises(ValueError):
+        engine.save_correction(other["id"], token, "The correct reference sentence")
+    result = engine.save_correction(
+        profile["id"], token, "The correct reference sentence"
+    )
+    assert result["samples"][0]["text"] == "The correct reference sentence"
+    with pytest.raises(ValueError):
+        engine.save_correction(profile["id"], token, "A second different sentence")

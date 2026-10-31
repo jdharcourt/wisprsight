@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T22:36:56.933556+00:00",
+  "title": "Design System: Wisprsight",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Background"
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground"
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Rail"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Muted Foreground"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border"
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary"
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Primary Foreground"
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Secondary"
+      },
+      "muted-surface": {
+        "role": "neutral",
+        "displayName": "Muted Surface"
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Accent"
+      },
+      "destructive": {
+        "role": "neutral",
+        "displayName": "Destructive"
+      },
+      "ring": {
+        "role": "neutral",
+        "displayName": "Ring"
+      },
+      "table-shell": {
+        "role": "neutral",
+        "displayName": "Table Shell"
+      },
+      "table-shell-border": {
+        "role": "neutral",
+        "displayName": "Table Shell Border"
+      },
+      "table-card": {
+        "role": "neutral",
+        "displayName": "Table Card"
+      },
+      "table-card-border": {
+        "role": "neutral",
+        "displayName": "Table Card Border"
+      },
+      "table-row-border": {
+        "role": "neutral",
+        "displayName": "Table Row Border"
+      },
+      "info": {
+        "role": "neutral",
+        "displayName": "Info"
+      },
+      "success": {
+        "role": "neutral",
+        "displayName": "Success"
+      },
+      "warning": {
+        "role": "neutral",
+        "displayName": "Warning"
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Dark Background"
+      },
+      "dark-foreground": {
+        "role": "neutral",
+        "displayName": "Dark Foreground"
+      },
+      "dark-rail": {
+        "role": "neutral",
+        "displayName": "Dark Rail"
+      },
+      "dark-field": {
+        "role": "neutral",
+        "displayName": "Dark Field"
+      },
+      "dark-muted-foreground": {
+        "role": "neutral",
+        "displayName": "Dark Muted Foreground"
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Dark Border"
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Dark Primary"
+      },
+      "dark-primary-foreground": {
+        "role": "neutral",
+        "displayName": "Dark Primary Foreground"
+      },
+      "dark-secondary": {
+        "role": "neutral",
+        "displayName": "Dark Secondary"
+      },
+      "dark-muted-surface": {
+        "role": "neutral",
+        "displayName": "Dark Muted Surface"
+      },
+      "dark-accent": {
+        "role": "neutral",
+        "displayName": "Dark Accent"
+      },
+      "dark-destructive": {
+        "role": "neutral",
+        "displayName": "Dark Destructive"
+      },
+      "dark-input": {
+        "role": "neutral",
+        "displayName": "Dark Input"
+      },
+      "dark-ring": {
+        "role": "neutral",
+        "displayName": "Dark Ring"
+      },
+      "dark-table-shell": {
+        "role": "neutral",
+        "displayName": "Dark Table Shell"
+      },
+      "dark-table-shell-border": {
+        "role": "neutral",
+        "displayName": "Dark Table Shell Border"
+      },
+      "dark-table-card": {
+        "role": "neutral",
+        "displayName": "Dark Table Card"
+      },
+      "dark-table-card-border": {
+        "role": "neutral",
+        "displayName": "Dark Table Card Border"
+      },
+      "dark-table-row-border": {
+        "role": "neutral",
+        "displayName": "Dark Table Row Border"
+      },
+      "dark-info": {
+        "role": "neutral",
+        "displayName": "Dark Info"
+      },
+      "dark-success": {
+        "role": "neutral",
+        "displayName": "Dark Success"
+      },
+      "dark-warning": {
+        "role": "neutral",
+        "displayName": "Dark Warning"
+      }
+    },
+    "typographyMeta": {
+      "sentence": {
+        "displayName": "Sentence",
+        "purpose": "The active calibration sentence."
+      }
+    },
+    "shadows": [
+      {
+        "name": "table-card-light",
+        "value": "0 1px 2px hsl(240 10% 10% / 0.06), 0 2px 8px -2px hsl(240 10% 10% / 0.06)",
+        "purpose": "Installed InstrumentModule inner surface."
+      },
+      {
+        "name": "table-card-dark",
+        "value": "inset 0 1px 0 hsl(0 0% 100% / 0.05), inset 0 0 0 1px hsl(0 0% 100% / 0.015), inset 0 12px 18px -16px hsl(0 0% 100% / 0.035)",
+        "purpose": "Installed dark InstrumentModule inner surface."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "140ms ease",
+        "purpose": "Global color and border changes."
+      },
+      {
+        "name": "sentence-enter",
+        "value": "280ms ease",
+        "purpose": "Sentence entry from 10vw right."
+      },
+      {
+        "name": "sentence-exit",
+        "value": "250ms ease",
+        "purpose": "Sentence exit to 10vw left."
+      },
+      {
+        "name": "sidebar",
+        "value": "300ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Registry sidebar expansion."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "Disable animations and transitions under reduced-motion preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sidebar-mobile",
+        "value": "768px"
+      },
+      {
+        "name": "workspace-compact",
+        "value": "700px"
+      },
+      {
+        "name": "session-compact",
+        "value": "600px"
+      },
+      {
+        "name": "workspace-narrow",
+        "value": "480px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Static CSS specimen of the installed Notra variant; React busy behavior remains in the source component.",
+      "html": "<button class=\"ds-button ds-primary\">Start calibration</button>",
+      "css": ".ds-button{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;border:1px solid transparent;border-radius:8px;font-weight:500;cursor:pointer;transition:background-color 140ms ease,filter 140ms ease;color:var(--primary-foreground,#fff);background:linear-gradient(to bottom,color-mix(in oklab,var(--primary,#242424),black 8%),color-mix(in oklab,var(--primary,#242424),black 20%));border-color:color-mix(in srgb,var(--primary,#242424) 60%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 1px 2px rgba(0,0,0,.18);}.ds-button:hover{filter:brightness(1.1)}.ds-ghost:hover{filter:none;background:var(--muted-surface,#f5f5f5)}.ds-button:focus-visible{outline:2px solid var(--focus,#767676);outline-offset:3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--ring,#777) 50%,transparent)}.ds-button:active{translate:0 1px}.ds-button:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}@supports(corner-shape:squircle){.ds-button:not(.ds-ghost){corner-shape:squircle;border-radius:12px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Static CSS specimen of the installed Notra variant; React busy behavior remains in the source component.",
+      "html": "<button class=\"ds-button ds-outline\">Edit sentence</button>",
+      "css": ".ds-button{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;border:1px solid transparent;border-radius:8px;font-weight:500;cursor:pointer;transition:background-color 140ms ease,filter 140ms ease;color:var(--foreground,#202020);background:linear-gradient(to bottom,var(--background,#fff),var(--muted-surface,#f5f5f5));border-color:var(--border,#e5e5e5);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 1px 2px rgba(0,0,0,.06);}.ds-button:hover{filter:brightness(1.1)}.ds-ghost:hover{filter:none;background:var(--muted-surface,#f5f5f5)}.ds-button:focus-visible{outline:2px solid var(--focus,#767676);outline-offset:3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--ring,#777) 50%,transparent)}.ds-button:active{translate:0 1px}.ds-button:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}@supports(corner-shape:squircle){.ds-button:not(.ds-ghost){corner-shape:squircle;border-radius:12px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Static CSS specimen of the installed Notra variant; React busy behavior remains in the source component.",
+      "html": "<button class=\"ds-button ds-ghost\">Exit calibration</button>",
+      "css": ".ds-button{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;border:1px solid transparent;border-radius:8px;font-weight:500;cursor:pointer;transition:background-color 140ms ease,filter 140ms ease;color:var(--foreground,#202020);background:transparent;}.ds-button:hover{filter:brightness(1.1)}.ds-ghost:hover{filter:none;background:var(--muted-surface,#f5f5f5)}.ds-button:focus-visible{outline:2px solid var(--focus,#767676);outline-offset:3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--ring,#777) 50%,transparent)}.ds-button:active{translate:0 1px}.ds-button:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}@supports(corner-shape:squircle){.ds-button:not(.ds-ghost){corner-shape:squircle;border-radius:12px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Native labeled field used for profile names.",
+      "html": "<label class=\"ds-label\" for=\"ds-profile\">Profile name</label><input class=\"ds-input\" id=\"ds-profile\" maxlength=\"60\" value=\"My profile\">",
+      "css": ".ds-label{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;display:block;font-size:13px;font-weight:500;margin-bottom:8px}.ds-input{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;height:36px;padding:7px 10px;border:1px solid var(--border,#e5e5e5);border-radius:6px;background:var(--field,#fff);color:var(--foreground,#202020)}.ds-input:hover{border-color:var(--focus,#767676)}.ds-input:focus-visible{outline:2px solid var(--focus,#767676);outline-offset:3px}.ds-input:disabled{opacity:.45}"
+    },
+    {
+      "name": "Sidebar Destination",
+      "kind": "nav",
+      "refersTo": "sidebar-item",
+      "description": "Expanded active destination from the registry menu.",
+      "html": "<nav aria-label=\"Workspace\"><button class=\"ds-nav\" aria-current=\"page\">Calibration</button></nav>",
+      "css": ".ds-nav{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;height:32px;padding:8px;border:0;border-radius:8px;background:var(--sidebar-accent,#ededed);color:var(--sidebar-foreground,#202020);font-weight:500;text-align:left;cursor:pointer;transition:background-color 75ms}.ds-nav:hover{background:var(--sidebar-accent,#ededed)}.ds-nav:focus-visible{outline:2px solid var(--ring,#777);outline-offset:2px}.ds-nav:disabled{opacity:.5;pointer-events:none}@media(prefers-reduced-motion:reduce){.ds-nav{transition:none}}"
+    },
+    {
+      "name": "Calibration Panel",
+      "kind": "card",
+      "refersTo": "calibration-panel",
+      "description": "Panel InstrumentModule with its installed layered surfaces.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-panel-head\">Personal calibration</div><div class=\"ds-panel-body\">Mouth one sentence at a time.</div></section>",
+      "css": ".ds-panel{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;padding:2px;border:1px solid var(--table-shell-border,#e7e7e5);border-radius:16px;background:var(--table-shell,#f3f3f2);color:var(--foreground,#202020)}.ds-panel-head{min-height:96px;padding:16px 16px 36px;font-weight:500}.ds-panel-body{position:relative;margin-top:-20px;padding:24px;border:1px solid var(--table-card-border,#e5e5e5);border-radius:14px;background:var(--table-card,#fff);box-shadow:var(--table-card-shadow,0 1px 2px hsl(240 10% 10% / .06))}"
+    },
+    {
+      "name": "Sentence Prompt",
+      "kind": "custom",
+      "description": "Responsive sentence type with the actual entry and reduced-motion behavior.",
+      "html": "<div class=\"ds-stage\"><p class=\"ds-instruction\">Mouth this sentence silently</p><h1 class=\"ds-sentence\">Please remember to bring the green notebook home this evening</h1></div>",
+      "css": ".ds-stage{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px;max-width:960px;padding:40px 32px;text-align:center;color:var(--foreground,#202020)}.ds-instruction{font-size:15px;color:var(--muted-foreground,#666);margin:0 0 24px}.ds-sentence{font-size:clamp(28px,4vw,44px);font-weight:550;line-height:1.45;letter-spacing:-.025em;text-wrap:balance;margin:0;animation:ds-sentence-enter 280ms ease both}@keyframes ds-sentence-enter{from{opacity:0;transform:translateX(10vw)}to{opacity:1;transform:translateX(0)}}@media(prefers-reduced-motion:reduce){.ds-sentence{animation:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Local dictation and guided calibration",
+    "overview": "A compact monochrome workspace follows the user-selected dplprint.glynn.cc reference: a solid navigation rail, thin toolbar, plain headings and functional content. System typography and neutral surfaces keep attention on text and camera work.\n\nThe implementation imports actual installed Notra registry buttons, select, sidebar, InstrumentModule cards and toasts directly. Their supplied material treatments remain intact; Base UI-backed progress and alerts share the registry foundation. The reference is directional, not a claim of pixel equivalence.",
+    "keyCharacteristics": [
+      "Compact shell and restrained monochrome surfaces.",
+      "Direct registry controls with their supplied states.",
+      "Full-screen sentence focus with a subordinate camera preview."
+    ],
+    "rules": [],
+    "dos": [
+      "Do import the installed Notra components from their source paths.",
+      "Do use real loading, disabled, error and selected states.",
+      "Do preserve keyboard focus visibility and reduced-motion behavior.",
+      "Do show camera and microphone state in plain text."
+    ],
+    "donts": [
+      "Don't replace registry components with lookalike adapters.",
+      "Don't introduce decorative dashboard cards, invented charts or performance claims.",
+      "Don't add blue accents, decorative gradients, glass shells or ornamental headings.",
+      "Don't treat the supplied registry depth effects as permission to decorate the surrounding shell."
+    ]
+  }
+}

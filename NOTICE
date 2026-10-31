@@ -10,7 +10,11 @@ Model checkpoints are downloaded separately and are not included in this reposit
 LRS3-derived weights are treated as noncommercial research artifacts pending an
 independent audit. No claim of commercial model rights is made.
 
-frontend/src/components/button.tsx adapts the Notra UI button's Base UI primitive
-and loading-state behavior with a reduced API and flat visual treatment to match
-the project brief. The retrieved official registry source is preserved in
-vendor/notra/button.json (https://ui.usenotra.com/r/notra-button.json).
+UI components in frontend/src/components/{button,sonner,select,sidebar,card,tooltip,dropdown-menu,shimmer}
+are installed directly from the official Notra shadcn registry, configured in
+frontend/components.json. Base UI foundation components are in components/ui.
+Registry sources: https://ui.usenotra.com/r/notra-button.json,
+https://ui.usenotra.com/r/notra-sonner.json,
+https://ui.usenotra.com/r/notra-select.json,
+https://ui.usenotra.com/r/notra-sidebar.json and https://ui.usenotra.com/r/card.json.
+The earlier reduced button adapter has been removed.

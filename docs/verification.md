@@ -28,7 +28,11 @@ Python tests cover session/CSRF rejection, origin/host validation, input sizes a
 
 Browser verification covers profile creation/renaming/deletion, calibration navigation, transcript editing/copy/clear, light and dark appearances, mobile overflow, and synthetic camera recording/discard without requesting a microphone for dictation. A delayed-permission test verifies that navigation is disabled while acquiring a camera and that cancelling stops a stream which arrives late. Real camera/microphone permission behavior and Safari recording require user-device verification.
 
-The TypeScript/Vite production build passes. Impeccable's mechanical detector reported no findings. Third-party Base UI modules emit harmless build warnings that their server-component directives are ignored in this client-only Vite bundle.
+Full-screen calibration was additionally tested using a public-domain video with a still ending as Chrome’s synthetic camera: real local WASM mouth tracking automatically finished three takes, saved their labels, advanced prompts and started training once. The fitting/evaluation endpoints in that workflow check were mocked; it does not establish personal accuracy.
+
+A fresh-load regression check reproduced the Base UI hook crash on the primary development port while isolated and production loads worked. Separate per-port Vite dependency caches fixed the mixed runtime; fresh loads and tooltips then passed.
+
+The TypeScript/Vite production build passes. Impeccable's mechanical detector reported no findings. The local live server serves its React refresh bootstrap as an external module. Sonner’s fixed stylesheet is explicitly allowed by SHA-256 rather than allowing arbitrary inline styles. Production builds currently emit a bundle-size advisory.
 
 ## Still to measure
 
@@ -39,3 +43,5 @@ The TypeScript/Vite production build passes. Impeccable's mechanical detector re
 - Generalization to other Apple Silicon Macs and other users.
 
 Do not describe any of these as verified until the corresponding measurements exist.
+
+The camera timing regression now accepts an isolated 200 ms interval in an otherwise 25 fps clip and resamples it to the checkpoint’s 25 fps input. Sustained capture below 15 fps, gaps over 300 ms, or excessive accumulated gaps remain rejected. This replaces the former single-gap 150 ms rejection; tests cover accepted transient jitter and rejected sustained loss. Dictation reuses a live camera between takes and awaits video playback on first acquisition. Real-camera behavior on the user’s laptop still needs a fresh take.

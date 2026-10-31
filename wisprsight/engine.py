@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -16,6 +17,15 @@ DATA = Path(os.environ.get("WISPRSIGHT_DATA", ROOT / ".local")).resolve()
 MODELS = ROOT / "models"
 _reader = None
 _reader_key = None
+_corrections = {}
+_correction_lock = threading.Lock()
+
+
+def expire_corrections():
+    with _correction_lock:
+        for token, pending in list(_corrections.items()):
+            if pending["expires"] < time.monotonic():
+                _corrections.pop(token, None)
 
 
 def profile_path(profile_id):
@@ -111,7 +121,6 @@ def extract_video(payload):
     import cv2
     import mediapipe as mp
     from lipflow.face import FaceObs, mouth_rois
-    from lipflow.vsr import LipReader
     from mediapipe.tasks.python import BaseOptions, vision
 
     tracker = vision.FaceLandmarker.create_from_options(
@@ -186,14 +195,26 @@ def extract_video(payload):
             raise ValueError(
                 "Your face was hidden for too long. Record the sentence again."
             )
-        if max(np.diff(timestamps)) > 0.15:
-            raise ValueError(
-                "The camera dropped too many frames. Close other camera apps and retry."
-            )
-        crops = mouth_rois(frames, anchors)
-        return crops[LipReader.resample(timestamps, len(frames))]
+        return resample_video(mouth_rois(frames, anchors), timestamps)
     finally:
         tracker.close()
+
+
+def resample_video(crops, timestamps):
+    from lipflow.vsr import LipReader
+
+    gaps = np.diff(timestamps)
+    duration = timestamps[-1] - timestamps[0]
+    fps = (len(timestamps) - 1) / duration
+    if (
+        fps < 15
+        or gaps.max() > 0.3
+        or np.maximum(gaps - 0.08, 0).sum() > duration * 0.1
+    ):
+        raise ValueError(
+            f"Camera timing is too uneven ({fps:.0f} fps, longest pause {gaps.max() * 1000:.0f} ms). Use steady lighting, close other camera apps, and retry."
+        )
+    return crops[LipReader.resample(timestamps, len(crops))]
 
 
 def transcribe(payload, profile_id):
@@ -212,18 +233,49 @@ def transcribe(payload, profile_id):
         "total_seconds": round(time.monotonic() - start, 2),
         "device": str(reader.enc_device),
     }
+    expire_corrections()
+    token = str(uuid4())
+    with _correction_lock:
+        while len(_corrections) >= 3:
+            del _corrections[next(iter(_corrections))]
+        _corrections[token] = {
+            "profile": profile_id,
+            "crops": crops,
+            "expires": time.monotonic() + 300,
+        }
+    result["correction_id"] = token
     del reader
     gc.collect()
     return result
 
 
 def save_sample(payload, profile_id, text):
+    return store_sample(extract_video(payload), profile_id, text)
+
+
+def save_correction(profile_id, token, text):
+    with _correction_lock:
+        pending = _corrections.get(str(UUID(str(token))))
+    if (
+        not pending
+        or pending["expires"] < time.monotonic()
+        or pending["profile"] != profile_id
+    ):
+        raise ValueError(
+            "This recording has expired. Record the sentence again to save a correction."
+        )
+    result = store_sample(pending["crops"], profile_id, text)
+    with _correction_lock:
+        _corrections.pop(token, None)
+    return result
+
+
+def store_sample(crops, profile_id, text):
     profile = read_profile(profile_id)
     if len(profile["samples"]) >= 100:
         raise ValueError("This prototype supports up to 100 examples per profile.")
     if len(normalize(text)) < 3:
         raise ValueError("Use a sentence with at least three English words.")
-    crops = extract_video(payload)
     if len(crops) > 175:
         raise ValueError("Keep calibration sentences under seven seconds.")
     sample_id = str(uuid4())
@@ -307,9 +359,19 @@ def train_profile(profile_id, job, cancelled):
         )
     validation_keys = profile.get("validation_keys")
     if not validation_keys:
-        validation_keys = sorted(
+        validation_keys = []
+        words = 0
+        for key in sorted(
             groups, key=lambda key: hashlib.sha256(key.encode()).hexdigest()
-        )[: max(6, len(groups) // 4)]
+        )[:-8]:
+            validation_keys.append(key)
+            words += len(normalize(groups[key][0]["text"]))
+            if len(validation_keys) >= 6 and words >= 60:
+                break
+        if len(validation_keys) < 6 or words < 60:
+            raise ValueError(
+                "Add more or longer sentences before training. At least sixty words must be reserved for validation while eight different sentences remain for training."
+            )
         profile["validation_keys"] = validation_keys
         write_json(profile_path(profile_id) / "profile.json", profile)
     validation = [sample for key in validation_keys for sample in groups.get(key, [])]

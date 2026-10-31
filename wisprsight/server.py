@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import secrets
@@ -6,6 +7,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager, suppress
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,22 +17,47 @@ from pydantic import BaseModel, Field
 
 from wisprsight import engine
 
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+@asynccontextmanager
+async def lifespan(app):
+    async def cleanup():
+        while True:
+            await asyncio.sleep(10)
+            engine.expire_corrections()
+
+    task = asyncio.create_task(cleanup())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 sessions = {}
 limits = defaultdict(deque)
 executor = ThreadPoolExecutor(max_workers=1)
 jobs = {}
 job_lock = threading.Lock()
 PORT = int(os.environ.get("WISPRSIGHT_PORT", "8765"))
+FRONTEND_ORIGIN = os.environ.get(
+    "WISPRSIGHT_FRONTEND_ORIGIN", f"https://localhost:{PORT}"
+)
 
 
 class ProfileInput(BaseModel):
     name: str = Field(min_length=1, max_length=60, pattern=r".*\S.*")
 
 
+class CorrectionInput(BaseModel):
+    token: UUID
+    text: str = Field(min_length=1, max_length=300, pattern=r"^[\x20-\x7e]+$")
+
+
 @app.middleware("http")
 async def protect(request, call_next):
-    origin = f"https://localhost:{PORT}"
+    origin = FRONTEND_ORIGIN
     if request.headers.get("host") not in {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}:
         response = JSONResponse({"detail": "Invalid host."}, status_code=400)
     elif request.headers.get("origin") not in {None, origin}:
@@ -65,7 +92,7 @@ async def protect(request, call_next):
             response = await call_next(request)
     response.headers.update(
         {
-            "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-StEaX+se6YS7pqjzrzMIA0KaX9zF/8zAhvQXZAe5epY='; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
             "Strict-Transport-Security": "max-age=31536000",
             "X-Content-Type-Options": "nosniff",
             "Referrer-Policy": "no-referrer",
@@ -222,6 +249,17 @@ def train(profile_id: UUID):
     return start_job("train", engine.train_profile, str(profile_id))
 
 
+@app.post("/api/corrections/{profile_id}")
+def correct(profile_id: UUID, body: CorrectionInput):
+    return start_job(
+        "correction",
+        engine.save_correction,
+        str(profile_id),
+        str(body.token),
+        body.text,
+    )
+
+
 @app.get("/api/jobs/{job_id}")
 def job_status(job_id: UUID):
     job = jobs.get(str(job_id))
@@ -245,6 +283,24 @@ if (engine.ROOT / "frontend/dist/assets").exists():
         StaticFiles(directory=engine.ROOT / "frontend/dist/assets"),
         name="assets",
     )
+
+
+if (engine.ROOT / "frontend/node_modules/@mediapipe/tasks-vision/wasm").exists():
+    app.mount(
+        "/vision",
+        StaticFiles(
+            directory=engine.ROOT / "frontend/node_modules/@mediapipe/tasks-vision/wasm"
+        ),
+        name="vision",
+    )
+
+
+@app.get("/api/face-model")
+def face_model():
+    path = engine.MODELS / "face_landmarker.task"
+    if not path.exists():
+        raise HTTPException(503, "Download the local models first.")
+    return FileResponse(path)
 
 
 @app.get("/")

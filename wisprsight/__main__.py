@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import ssl
+import subprocess
 import urllib.request
 
 import certifi
@@ -101,7 +102,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument(
-        "command", choices=["serve", "download-models"], nargs="?", default="serve"
+        "command",
+        choices=["serve", "dev", "download-models"],
+        nargs="?",
+        default="serve",
     )
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
@@ -119,6 +123,37 @@ def main():
         flush=True,
     )
     print("Camera and microphone activate only through browser controls.", flush=True)
+    if args.command == "dev":
+        if args.port > 65533:
+            parser.error("Development mode needs a port at or below 65533.")
+        os.environ.update(
+            {
+                "WISPRSIGHT_PORT": str(args.port + 2),
+                "WISPRSIGHT_FRONTEND_ORIGIN": f"https://localhost:{args.port}",
+                "WISPRSIGHT_FRONTEND_PORT": str(args.port),
+                "WISPRSIGHT_CERT": str(cert),
+                "WISPRSIGHT_KEY": str(key),
+            }
+        )
+        frontend = subprocess.Popen(["node", "dev-server.mjs"], cwd=ROOT / "frontend")
+        try:
+            uvicorn.run(
+                "wisprsight.server:app",
+                host="127.0.0.1",
+                port=args.port + 2,
+                ssl_certfile=str(cert),
+                ssl_keyfile=str(key),
+                access_log=False,
+                reload=True,
+                reload_dirs=[str(ROOT / "wisprsight")],
+            )
+        finally:
+            frontend.terminate()
+            try:
+                frontend.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                frontend.kill()
+        return
     uvicorn.run(
         "wisprsight.server:app",
         host="127.0.0.1",

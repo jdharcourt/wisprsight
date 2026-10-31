@@ -14,14 +14,14 @@ Start by selectively reusing Lipflow's inference, preprocessing and adaptation i
 
 ## Browser flows
 
-- Dictate: choose profile, enable camera, start and stop one short recording, review/edit/copy the actual model output. Cancel discards the recording. No fabricated or demo transcript.
-- Calibrate: choose a suggested sentence or say an original one with microphone enabled. Local ASR drafts the reference; user edits it. Record a silent take of that reference and explicitly save its mouth crops. Repeat, then start local training from the dashboard.
-- Train: reserve validation sentences before fitting; show baseline and candidate word error rate on the same unseen clips. Freeze all except the visual frontend; train with 0.1 CTC + 0.9 attention loss, AdamW at 1e-5 for three epochs, frozen batch-normalization statistics and at most 175 frames per take. Check cancellation between clips and cap the training run at twenty minutes. Verify one bounded supervised step on licensed footage before personal training. Evaluate against the currently active personal model, or stock model on first calibration. Activate only with at least 60 validation reference words, at least two fewer errors and at least a two-percentage-point absolute WER improvement. Keep validation references frozen across retraining; new takes of a reserved sentence stay reserved. Keep the shared base model unchanged. Report when evidence is insufficient.
-- Manage: select, rename or delete local profiles; see sample count and training status; retrain with more examples. No login or cloud account.
+- Dictate: choose a profile, record a short silent sentence, then edit/copy the Title Case transcript. Save correction stores that take's mouth crops with approved text as a training example.
+- Calibrate: start a full-screen camera-only session. Each prompt is displayed in large readable type; local WASM landmarks detect articulation and its finishing pause. The take saves automatically and the screen slides to the next sentence. A Done control and retry path support manual endpoint correction. Remaining prompts complete a target of 24 different sentences.
+- Train: the camera switches off and Python training starts automatically after the final saved prompt. Reserve validation sentences before fitting; activate a candidate only after sufficient evidence of improvement over the incumbent. Custom spoken references, typed references and manual training remain available.
+- Manage: select, rename or delete local profiles; see example count and training status. No cloud account.
 
 ## Data and evaluation
 
-Use UUID profile/sample identifiers and local owner-only storage. Persist mouth crops and approved references only after Save example; discard full-face footage and audio after processing. Persist training summaries without private sentences. Separate users' artifacts. Never train on the validation split. Repeated reference sentences belong to one split. Use fresh sentences across sessions for a later independent acceptance test; validation used for candidate selection is not an unbiased final benchmark.
+Use UUID profile/sample identifiers and local owner-only storage. Persist mouth crops and approved references on explicit example/correction saving, or automatically within a deliberately started calibration session; discard full-face footage and audio after processing. Persist training summaries without private sentences. Separate users' artifacts. Never train on the validation split. Repeated reference sentences belong to one split. Use fresh sentences across sessions for a later independent acceptance test; validation used for candidate selection is not an unbiased final benchmark.
 
 Initial calibration target: at least 18 distinct silent sentences, with at least 6 reserved for validation. This is an engineering starting point, not a claim that 18 examples guarantee useful personalization. Show repeat prompts or request more data when sample diversity is insufficient. Target about 30-50 varied examples for a stronger personal calibration experiment.
 
@@ -37,7 +37,7 @@ Measure raw-model word error rate, preprocessing time, inference time, memory us
 
 ## Dashboard brief
 
-Use actual Notra registry components where appropriate, adapted to the user's ban on gradients and decorative shells. Fixed 248px solid sidebar with Dictate, Calibration and Settings. A 52px header shows the page name and local model status. Camera preview and recording controls share the main workspace with editable transcript text. Calibration is a sentence-by-sentence workflow with a plain example list and explicit Train button. At narrow widths navigation moves above content. Keyboard control, visible focus, 200% zoom, reduced motion and text equivalents for status are required. Apple foundations apply to this web app; native Mac conventions are reserved for the Mac client.
+Use actual Notra registry buttons, toasts, selects, sidebar, cards and their Base UI alert/progress foundation. Match dplprint.glynn.cc's monochrome shell: 48px icon rail, compact header and a centered workspace. Keep the supplied registry control depth instead of flattening it into adapters. Calibration becomes a dedicated full-viewport prompt sequence with horizontal transitions; reduced-motion mode removes the movement. Keyboard controls, clear camera/microphone states, readable errors and narrow-screen layouts are required.
 
 ## Security and privacy
 
