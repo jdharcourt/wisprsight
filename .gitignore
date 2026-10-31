@@ -23,3 +23,8 @@ checkpoints/
 *.webm
 *.avi
 *.log
+node_modules/
+.local/
+frontend/dist/
+.impeccable/review/
+.impeccable/mocks/

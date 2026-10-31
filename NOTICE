@@ -1,0 +1,16 @@
+Wisprsight selectively includes Lipflow inference and preprocessing code at revision
+e37453b1e1e125ca7130e4abf2635117635f6e0b (https://github.com/amywork777/lipflow).
+Original MIT license and upstream notices are in vendor/licenses/.
+
+vendor/espnet contains Apache-2.0 ESPnet/Auto-AVSR code, including upstream copyright
+notices. vendor/lipflow/face.py, vsr.py, train_vsr.py and preprocessing assets derive
+from Lipflow and Auto-AVSR. The paths and tokenizer modules are reduced integrations.
+
+Model checkpoints are downloaded separately and are not included in this repository.
+LRS3-derived weights are treated as noncommercial research artifacts pending an
+independent audit. No claim of commercial model rights is made.
+
+frontend/src/components/button.tsx adapts the Notra UI button's Base UI primitive
+and loading-state behavior with a reduced API and flat visual treatment to match
+the project brief. The retrieved official registry source is preserved in
+vendor/notra/button.json (https://ui.usenotra.com/r/notra-button.json).

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "notra-button",
+  "title": "Button",
+  "description": "A Base UI button with Depth primary, secondary, outline and destructive variants, squircle corners, and loading and progress states.",
+  "dependencies": [
+    "@base-ui/react",
+    "class-variance-authority",
+    "cn"
+  ],
+  "registryDependencies": [
+    "button"
+  ],
+  "files": [
+    {
+      "path": "registry/notra/button/components/button.tsx",
+      "content": "import { cva, type VariantProps } from \"class-variance-authority\";\nimport { cn } from \"cn\";\nimport { type ComponentProps, useId } from \"react\";\n\nimport {\n  Button as ShadcnButton,\n  buttonVariants as shadcnButtonVariants,\n} from \"@/components/ui/button\";\n\nimport { ButtonContent } from \"./button-content\";\n\nconst depthVariants = cva(\"relative\", {\n  variants: {\n    variant: {\n      default:\n        \"border-primary/60 text-primary-foreground bg-linear-to-b from-[color-mix(in_oklab,var(--color-primary),black_8%)] to-[color-mix(in_oklab,var(--color-primary),black_20%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_2px_rgba(0,0,0,0.18)] [corner-shape:squircle] hover:brightness-110 supports-[corner-shape:squircle]:rounded-[0.75rem]\",\n      outline:\n        \"border-border from-background to-muted text-foreground aria-expanded:from-secondary aria-expanded:to-secondary dark:from-input dark:to-muted bg-linear-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_2px_rgba(0,0,0,0.06)] [corner-shape:squircle] hover:brightness-[0.97] supports-[corner-shape:squircle]:rounded-[0.75rem] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_2px_rgba(0,0,0,0.4)] dark:hover:brightness-125\",\n      secondary:\n        \"border-foreground/60 from-foreground/85 to-foreground text-background hover:from-foreground/70 hover:to-foreground/85 bg-linear-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_2px_rgba(0,0,0,0.18)] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-[0.75rem]\",\n      ghost: \"\",\n      destructive:\n        \"border-destructive/60 from-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 bg-linear-to-b to-[color-mix(in_oklab,var(--color-destructive),black_12%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_2px_rgba(0,0,0,0.18)] [corner-shape:squircle] hover:brightness-110 supports-[corner-shape:squircle]:rounded-[0.75rem] dark:from-[color-mix(in_oklab,var(--color-destructive),black_20%)] dark:to-[color-mix(in_oklab,var(--color-destructive),black_30%)]\",\n      link: \"text-foreground\",\n    },\n  },\n  defaultVariants: {\n    variant: \"default\",\n  },\n});\n\ntype ButtonVariantProps = VariantProps<typeof shadcnButtonVariants>;\n\nfunction buttonVariants({\n  className,\n  ...props\n}: ButtonVariantProps & { className?: string } = {}) {\n  return cn(shadcnButtonVariants(props), depthVariants(props), className);\n}\n\ntype ButtonProps = ComponentProps<typeof ShadcnButton> & {\n  /** Swaps the label for bouncing dots while an action runs. */\n  loading?: boolean;\n  /**\n   * Fills the button from the left, from 0 to 100, e.g. while a file\n   * uploads. Set it back to `undefined` when the work is done: the bar fills\n   * up and fades out. For work you can't measure, use `loading`.\n   */\n  progress?: number;\n};\n\nfunction Button({\n  className,\n  variant = \"default\",\n  size = \"default\",\n  loading = false,\n  progress,\n  disabled,\n  focusableWhenDisabled,\n  \"aria-describedby\": ariaDescribedBy,\n  children,\n  ...props\n}: ButtonProps) {\n  const hasProgress = progress !== undefined;\n  const busy = loading || hasProgress;\n  const progressTextId = useId();\n\n  return (\n    <ShadcnButton\n      aria-busy={busy || undefined}\n      aria-describedby={\n        hasProgress\n          ? [ariaDescribedBy, progressTextId].filter(Boolean).join(\" \")\n          : ariaDescribedBy\n      }\n      className={cn(\n        depthVariants({ variant }),\n        \"has-data-[clip]:overflow-hidden\",\n        busy && \"cursor-progress\",\n        className\n      )}\n      data-loading={loading ? \"\" : undefined}\n      disabled={disabled || busy}\n      focusableWhenDisabled={focusableWhenDisabled ?? busy}\n      size={size}\n      variant={variant}\n      {...props}\n    >\n      <ButtonContent\n        loading={loading}\n        progress={progress}\n        progressTextId={progressTextId}\n      >\n        {children}\n      </ButtonContent>\n    </ShadcnButton>\n  );\n}\n\nexport { Button, buttonVariants };\nexport type { ButtonProps };\n",
+      "type": "registry:component",
+      "target": "components/button/components/button.tsx"
+    },
+    {
+      "path": "registry/notra/button/components/button-content.tsx",
+      "content": "\"use client\";\n\nimport { Progress as ProgressPrimitive } from \"@base-ui/react/progress\";\nimport { cn } from \"cn\";\nimport { useState } from \"react\";\n\nconst LOADING_DOTS = [\n  { bounce: \"[animation-delay:0ms]\", enter: \"[animation-delay:70ms]\" },\n  { bounce: \"[animation-delay:140ms]\", enter: \"[animation-delay:110ms]\" },\n  { bounce: \"[animation-delay:280ms]\", enter: \"[animation-delay:150ms]\" },\n] as const;\n\nfunction useLoadingSwap(loading: boolean) {\n  const [previousLoading, setPreviousLoading] = useState(loading);\n  const [isSwapping, setIsSwapping] = useState(false);\n  if (loading !== previousLoading) {\n    setPreviousLoading(loading);\n    setIsSwapping(true);\n  }\n  return { finishSwap: () => setIsSwapping(false), isSwapping };\n}\n\nfunction useProgressCompletion(hasProgress: boolean) {\n  const [previousHasProgress, setPreviousHasProgress] = useState(hasProgress);\n  const [isCompleting, setIsCompleting] = useState(false);\n  if (hasProgress !== previousHasProgress) {\n    setPreviousHasProgress(hasProgress);\n    setIsCompleting(!hasProgress);\n  }\n  return { finishCompletion: () => setIsCompleting(false), isCompleting };\n}\n\nfunction ButtonProgress({\n  completing,\n  onFaded,\n  value,\n}: {\n  completing: boolean;\n  onFaded: () => void;\n  value: number;\n}) {\n  return (\n    <ProgressPrimitive.Root\n      aria-hidden\n      className={cn(\n        \"pointer-events-none absolute inset-0\",\n        completing && \"animate-button-progress-out\"\n      )}\n      data-slot=\"button-progress\"\n      onAnimationEnd={(event) => {\n        if (event.target === event.currentTarget) {\n          onFaded();\n        }\n      }}\n      render={<span />}\n      value={value}\n    >\n      <ProgressPrimitive.Track\n        className=\"absolute inset-0 overflow-hidden\"\n        render={<span />}\n      >\n        <ProgressPrimitive.Indicator\n          className=\"absolute inset-y-0 start-0 bg-current/15 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none\"\n          render={<span />}\n        />\n      </ProgressPrimitive.Track>\n    </ProgressPrimitive.Root>\n  );\n}\n\nfunction ButtonLoader({\n  entering,\n  loading,\n  onSwappedOut,\n}: {\n  entering: boolean;\n  loading: boolean;\n  onSwappedOut: () => void;\n}) {\n  return (\n    <span\n      aria-hidden\n      className={cn(\n        \"pointer-events-none absolute inset-0 flex items-center justify-center gap-[0.2em]\",\n        !loading &&\n          \"animate-button-swap-out opacity-0 motion-reduce:animate-none\"\n      )}\n      data-slot=\"button-loader\"\n      onAnimationEnd={(event) => {\n        if (!loading && event.target === event.currentTarget) {\n          onSwappedOut();\n        }\n      }}\n    >\n      {LOADING_DOTS.map(({ bounce, enter }) => (\n        <span\n          className={cn(\n            \"motion-reduce:animate-none\",\n            loading && entering && `animate-button-swap-in ${enter}`\n          )}\n          key={enter}\n        >\n          <span\n            className={cn(\n              \"animate-button-dot block size-[0.3em] rounded-full bg-current motion-reduce:animate-none\",\n              bounce,\n              !loading && \"[animation-play-state:paused]\"\n            )}\n          />\n        </span>\n      ))}\n    </span>\n  );\n}\n\ninterface ButtonContentProps {\n  children?: React.ReactNode;\n  loading: boolean;\n  progress: number | undefined;\n  progressTextId: string;\n}\n\nfunction ButtonContent({\n  children,\n  loading,\n  progress,\n  progressTextId,\n}: ButtonContentProps) {\n  const hasProgress = progress !== undefined;\n  const { finishSwap, isSwapping } = useLoadingSwap(loading);\n  const { finishCompletion, isCompleting } = useProgressCompletion(hasProgress);\n  const showLoader = loading || isSwapping;\n  const showProgress = hasProgress || isCompleting;\n\n  return (\n    <>\n      {showProgress && (\n        <ButtonProgress\n          completing={isCompleting}\n          onFaded={finishCompletion}\n          value={progress ?? 100}\n        />\n      )}\n      {hasProgress && (\n        <span hidden id={progressTextId}>\n          {`${Math.round(progress)}%`}\n        </span>\n      )}\n      {showLoader || showProgress ? (\n        <span\n          className={cn(\n            \"relative inline-flex min-w-0 flex-1 items-center [justify-content:inherit] [gap:inherit] motion-reduce:animate-none\",\n            loading && \"opacity-0\",\n            isSwapping &&\n              (loading\n                ? \"animate-button-swap-out\"\n                : \"animate-button-swap-in [animation-delay:70ms]\")\n          )}\n          data-clip=\"\"\n          data-slot=\"button-label\"\n        >\n          {children}\n        </span>\n      ) : (\n        children\n      )}\n      {showLoader && (\n        <ButtonLoader\n          entering={isSwapping}\n          loading={loading}\n          onSwappedOut={finishSwap}\n        />\n      )}\n    </>\n  );\n}\n\nexport { ButtonContent };\n",
+      "type": "registry:component",
+      "target": "components/button/components/button-content.tsx"
+    }
+  ],
+  "cssVars": {
+    "theme": {
+      "animate-button-swap-in": "button-swap-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both",
+      "animate-button-swap-out": "button-swap-out 360ms cubic-bezier(0.45, 0, 0.25, 1) both",
+      "animate-button-dot": "button-dot 1s ease-in-out infinite",
+      "animate-button-progress-out": "button-progress-out 600ms ease-out both"
+    }
+  },
+  "css": {
+    "@keyframes button-swap-in": {
+      "from": {
+        "opacity": "0",
+        "transform": "translateY(0.45em)",
+        "filter": "blur(4px)"
+      },
+      "to": {
+        "opacity": "1",
+        "transform": "translateY(0)",
+        "filter": "blur(0)"
+      }
+    },
+    "@keyframes button-swap-out": {
+      "from": {
+        "opacity": "1",
+        "transform": "translateY(0)",
+        "filter": "blur(0)"
+      },
+      "to": {
+        "opacity": "0",
+        "transform": "translateY(-0.45em)",
+        "filter": "blur(4px)"
+      }
+    },
+    "@keyframes button-dot": {
+      "0%, 60%, 100%": {
+        "opacity": "0.45",
+        "transform": "translateY(0)"
+      },
+      "30%": {
+        "opacity": "1",
+        "transform": "translateY(-0.3em)"
+      }
+    },
+    "@keyframes button-progress-out": {
+      "0%, 50%": {
+        "opacity": "1"
+      },
+      "100%": {
+        "opacity": "0"
+      }
+    }
+  },
+  "type": "registry:component"
+}

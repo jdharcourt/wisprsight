@@ -1,0 +1,52 @@
+# Wisprsight implementation plan
+
+Status: implementation authorized, 31 October 2026.
+
+## Outcome
+
+An Apple Silicon user launches a local Python application, opens its browser dashboard, creates a calibration profile, and silently mouths unrestricted English sentences to produce editable text. All recognition and training execute locally. A microphone is used only when explicitly enabled to provide calibration labels.
+
+## Architecture
+
+React/Vite and Notra UI form the browser client. FastAPI serves the production build and a same-origin API on loopback HTTPS. PyTorch runs a pretrained Auto-AVSR visual model using MPS for the visual encoder and CPU beam decoding. MediaPipe landmarks align frames into mouth crops matching the checkpoint's preprocessing. A separate local Whisper model produces draft calibration transcripts from explicitly recorded audio; users correct labels before training.
+
+Start by selectively reusing Lipflow's inference, preprocessing and adaptation implementation at a recorded Git revision, preserving attribution. Do not import its desktop app, global keyboard hooks, cloud cleanup, microphone capture, history import or automatic recording. Keep the inference boundary independent of the browser so a later macOS client can reuse it.
+
+## Browser flows
+
+- Dictate: choose profile, enable camera, start and stop one short recording, review/edit/copy the actual model output. Cancel discards the recording. No fabricated or demo transcript.
+- Calibrate: choose a suggested sentence or say an original one with microphone enabled. Local ASR drafts the reference; user edits it. Record a silent take of that reference and explicitly save its mouth crops. Repeat, then start local training from the dashboard.
+- Train: reserve validation sentences before fitting; show baseline and candidate word error rate on the same unseen clips. Freeze all except the visual frontend; train with 0.1 CTC + 0.9 attention loss, AdamW at 1e-5 for three epochs, frozen batch-normalization statistics and at most 175 frames per take. Check cancellation between clips and cap the training run at twenty minutes. Verify one bounded supervised step on licensed footage before personal training. Evaluate against the currently active personal model, or stock model on first calibration. Activate only with at least 60 validation reference words, at least two fewer errors and at least a two-percentage-point absolute WER improvement. Keep validation references frozen across retraining; new takes of a reserved sentence stay reserved. Keep the shared base model unchanged. Report when evidence is insufficient.
+- Manage: select, rename or delete local profiles; see sample count and training status; retrain with more examples. No login or cloud account.
+
+## Data and evaluation
+
+Use UUID profile/sample identifiers and local owner-only storage. Persist mouth crops and approved references only after Save example; discard full-face footage and audio after processing. Persist training summaries without private sentences. Separate users' artifacts. Never train on the validation split. Repeated reference sentences belong to one split. Use fresh sentences across sessions for a later independent acceptance test; validation used for candidate selection is not an unbiased final benchmark.
+
+Initial calibration target: at least 18 distinct silent sentences, with at least 6 reserved for validation. This is an engineering starting point, not a claim that 18 examples guarantee useful personalization. Show repeat prompts or request more data when sample diversity is insufficient. Target about 30-50 varied examples for a stronger personal calibration experiment.
+
+Measure raw-model word error rate, preprocessing time, inference time, memory use and failure rate separately. Any later text cleanup must remain local and be evaluated separately. Never present decoder scores as calibrated accuracy probabilities.
+
+## Delivery sequence
+
+1. Reproducible inference: pin source and artifacts; verify downloads, safe-load tensor weights and decode a real consented/licensed test clip on this M2. Unit-test preprocessing and data boundaries without camera access.
+2. Browser workflow: implement camera-only dictation, profiles, editable text, explicit cancellation, model missing/error states and local API protections.
+3. Browser calibration: microphone-enabled local label capture, label editing, silent paired take, saved examples, holdout split, training job, validation gate and rollback.
+4. Personal evaluation: user records real silent sentences; compare stock versus personalized WER on unseen examples. Fix actual data/model failures before claiming usable dictation.
+5. Native macOS: menu bar, explicit camera permission, optional global shortcut and paste integration. Signed/notarized distribution and Core ML/MLX optimization follow validated accuracy; neither blocks the Python browser prototype.
+
+## Dashboard brief
+
+Use actual Notra registry components where appropriate, adapted to the user's ban on gradients and decorative shells. Fixed 248px solid sidebar with Dictate, Calibration and Settings. A 52px header shows the page name and local model status. Camera preview and recording controls share the main workspace with editable transcript text. Calibration is a sentence-by-sentence workflow with a plain example list and explicit Train button. At narrow widths navigation moves above content. Keyboard control, visible focus, 200% zoom, reduced motion and text equivalents for status are required. Apple foundations apply to this web app; native Mac conventions are reserved for the Mac client.
+
+## Security and privacy
+
+Bind to loopback only; validate Host and Origin, use session-bound CSRF tokens for mutations, Secure/HttpOnly/SameSite cookies, CSP and HSTS. Serve built JavaScript and styles locally with no inline scripts or CDNs. Provision a local TLS certificate explicitly; do not silently install a trust root. Rate-limit APIs and serialize inference/training. Validate upload size, allowed media signatures, decoder dimensions, frame count and duration; keep decode work bounded. Resolve only validated identifiers beneath the data directory. Load verified tensors with weights_only=True, never arbitrary pickle. Do not log speech, images, tokens or secrets.
+
+## Dependencies and limits
+
+The shared visual and ASR checkpoints require an initial download; inference is offline afterwards. Model code licensing does not clear pretrained weights or datasets for commercial distribution. This prototype is research-only until that audit is resolved. Silent articulation differs from ordinary voiced speech; paired calibration directly tests that gap. A small calibration set may not overcome visual ambiguity.
+
+## Completion evidence
+
+Report separately: checks that pass, real model smoke results, browser interaction verification, and actual personal training results. Training cannot run meaningfully until a user supplies consented examples through the browser. Never substitute synthetic clips for a claimed personal calibration.

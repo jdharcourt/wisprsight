@@ -1,0 +1,60 @@
+[
+  {
+    "path": "vsr/model.json",
+    "repo": "Amanvir/LRS3_V_WER19.1",
+    "revision": "c0b413f56b164565865a63f00774ee55a9738cc5",
+    "sha256": "e062e8c58579f54cb51087e639e674781189809905db4162efe0fe1325356d4f"
+  },
+  {
+    "path": "vsr/model.pth",
+    "repo": "Amanvir/LRS3_V_WER19.1",
+    "revision": "c0b413f56b164565865a63f00774ee55a9738cc5",
+    "sha256": "e740cef369abeabd0ba2c18e37a0661342e1d94d432d6caa77755a11821d8fe3"
+  },
+  {
+    "path": "lm/model.json",
+    "repo": "Amanvir/lm_en_subword",
+    "revision": "f4e39b6d0904b2a900c53a2fff0377796c797bdc",
+    "sha256": "6e2d2004e4066af3e5a3d74c53b0d648fd53904da07178671d1cbe28a206d548"
+  },
+  {
+    "path": "lm/model.pth",
+    "repo": "Amanvir/lm_en_subword",
+    "revision": "f4e39b6d0904b2a900c53a2fff0377796c797bdc",
+    "sha256": "c75aa39020dec98f432c8689b145d3f4cc407d4daa90a0c64202386c34f83c18"
+  },
+  {
+    "path": "lm/unigram5000.model",
+    "url": "https://raw.githubusercontent.com/mpc001/auto_avsr/182b62837773ab01052d4ac21ef1d2203ea7d267/spm/unigram/unigram5000.model",
+    "sha256": "2c1d648ccf5fdce6612ecbea2ffbd1cab5aabc90458781186175c3911c4bdb1e"
+  },
+  {
+    "path": "face_landmarker.task",
+    "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
+  },
+  {
+    "path": "whisper/config.json",
+    "repo": "Systran/faster-whisper-tiny.en",
+    "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
+    "sha256": "14b1b421a90349bc551b881461426b561a874049cb9e4c4864f2ca384f6a7cc5"
+  },
+  {
+    "path": "whisper/model.bin",
+    "repo": "Systran/faster-whisper-tiny.en",
+    "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
+    "sha256": "1a5afae06a4db91c975c9a9d78be5cc110ee4ea022ad57d55492e4550e936b2a"
+  },
+  {
+    "path": "whisper/tokenizer.json",
+    "repo": "Systran/faster-whisper-tiny.en",
+    "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
+    "sha256": "929c5252409436dce1b38a75d1abbcb5e132d170d8e324e4e04ed915fa2d22df"
+  },
+  {
+    "path": "whisper/vocabulary.txt",
+    "repo": "Systran/faster-whisper-tiny.en",
+    "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba",
+    "sha256": "ff77588746d3a2595d32ab5b69ffd7b95ce2441ac57533cb66fc3eb575a115cf"
+  }
+]
