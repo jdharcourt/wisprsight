@@ -99,7 +99,9 @@ def make_reader(profile_id=None, fresh=False):
     _reader = None
     gc.collect()
     vsr.MODELS = str(MODELS)
-    reader = vsr.LipReader(beam_size=5, personal=False)
+    reader = vsr.LipReader(
+        device="cpu" if fresh else "auto", beam_size=5, personal=False
+    )
     if profile_id and (profile_path(profile_id) / "active.pth").exists():
         import torch
 
@@ -428,7 +430,7 @@ def train_profile(profile_id, job, cancelled):
                     "Training stopped. Your previous calibration is unchanged."
                 )
             job["message"] = (
-                f"Training epoch {epoch + 1} of 3 · example {index + 1} of {len(training)}"
+                f"Training on {reader.enc_device} · epoch {epoch + 1} of 3 · example {index + 1} of {len(training)}"
             )
             crops = np.load(
                 profile_path(profile_id) / f"{sample['id']}.npy", allow_pickle=False

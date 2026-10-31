@@ -29,6 +29,8 @@ The first model download is about 1.2 GB, plus the Python environment and downlo
 
 To add your own material, choose Add a custom sentence instead. You can type/edit a reference or record a spoken reference with the microphone; local Whisper supplies a draft label. Review it, record a silent take, then save it.
 
+Personal training runs on the CPU to avoid Metal command-buffer failures during longer backward passes. Dictation retains automatic GPU acceleration.
+
 To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example for the next training update. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
 
 A personal model replaces your current model only after a clear validation improvement across at least 60 reference words. Otherwise your existing model stays active. Profiles and calibration data remain in `.local/profiles/`; deleting a profile removes its examples and personal weights. The microphone is never requested for ordinary dictation.

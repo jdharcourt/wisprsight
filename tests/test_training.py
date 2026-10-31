@@ -119,3 +119,17 @@ def test_variable_camera_timing_rejects_sustained_loss():
     ]:
         with pytest.raises(ValueError, match="Camera timing is too uneven"):
             engine.resample_video(crops, timestamps)
+
+
+def test_training_reader_uses_cpu_without_changing_inference_device(monkeypatch):
+    from lipflow import vsr
+
+    devices = []
+    monkeypatch.setattr(
+        vsr, "LipReader", lambda **kwargs: devices.append(kwargs["device"]) or object()
+    )
+    monkeypatch.setattr(engine, "_reader", None)
+    monkeypatch.setattr(engine, "_reader_key", None)
+    engine.make_reader(fresh=True)
+    engine.make_reader()
+    assert devices == ["cpu", "auto"]
