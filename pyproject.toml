@@ -22,6 +22,7 @@ dependencies = [
 wisprsight = "wisprsight.__main__:main"
 
 [dependency-groups]
+export = ["onnx==1.17.0", "onnxruntime>=1.21,<2"]
 dev = ["pytest>=8", "httpx>=0.28", "ruff>=0.11"]
 
 [build-system]

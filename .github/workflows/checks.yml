@@ -25,4 +25,4 @@ jobs:
       - run: uv run pytest -q
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
-      - run: node --experimental-strip-types --test frontend/src/calibration-endpoint.test.ts
+      - run: node --experimental-strip-types --test frontend/src/calibration-endpoint.test.ts frontend/src/browser-decoder.test.ts

@@ -28,3 +28,7 @@ node_modules/
 frontend/dist/
 .impeccable/review/
 .impeccable/mocks/
+
+frontend/public/browser-model/
+frontend/public/vision/
+frontend/public/ort/

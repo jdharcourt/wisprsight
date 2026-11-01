@@ -1,3 +1,4 @@
+import "./prepare-static.mjs";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { Agent } from "node:https";
@@ -12,6 +13,7 @@ const cert = readFileSync(process.env.WISPRSIGHT_CERT);
 const nonce = randomBytes(24).toString("base64");
 const server = await createServer({
   configFile: false,
+  worker: { format: "es" },
   cacheDir: fileURLToPath(new URL(`./node_modules/.vite-wisprsight-${port}`, import.meta.url)),
   plugins: [react(), tailwind(), {
     name: "external-refresh-preamble",

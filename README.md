@@ -2,9 +2,15 @@
 
 Local, camera-only silent English dictation for Apple Silicon Macs.
 
-Mouth a sentence while facing your laptop, then review and copy its transcription in a browser. Python runs the vision and speech model on your laptop. A native macOS app is planned after the browser prototype.
+Mouth a sentence while facing your laptop, then review and copy its transcription in a browser. The browser-only runtime uses WebGPU on your laptop with no Python installation. The existing Python runtime remains available for visual-frontend fine-tuning and spoken-reference labels. A native macOS app is planned.
 
-## Run locally
+## Browser-only site
+
+Open the hosted page, choose Load browser model, then create a browser profile. Camera processing, recognition and correction learning stay on the laptop. The first model download is about 1 GB; it is cached when storage allows. Current Chrome with WebGPU is required. Browser profiles use IndexedDB, separately from Python profiles. Browser learning adapts word preferences rather than visual weights.
+
+See [browser setup and Vercel deployment](docs/browser.md). The site operator must export and host the model bundle; source-only deployment is insufficient.
+
+## Run Python locally
 
 Requires an Apple Silicon Mac, Python 3.11–3.12, Node 22 and [uv](https://docs.astral.sh/uv/). This source-checkout prototype has been tested on an M2 Mac with 16 GB RAM.
 
@@ -27,9 +33,9 @@ The first model download is about 1.2 GB, plus the Python environment and downlo
 3. Complete the remaining prompts toward 8 different sentences. The camera turns off and local training starts automatically after the final sentence.
 4. Review the result, then choose Start dictating.
 
-To add your own material, choose Add a custom sentence instead. You can type/edit a reference or record a spoken reference with the microphone; local Whisper supplies a draft label. Review it, record a silent take, then save it.
+To add your own material, choose Add a custom sentence instead. You can type/edit a reference or, in Python mode, record a spoken reference with the microphone; local Whisper supplies a draft label. Review it, record a silent take, then save it.
 
-Personal training runs on the CPU to avoid Metal command-buffer failures during longer backward passes. Dictation retains automatic GPU acceleration.
+In Python mode, personal training runs on the CPU to avoid Metal command-buffer failures during longer backward passes. Dictation retains automatic GPU acceleration.
 
 To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example, and local CPU learning queues automatically after 30 seconds without recording. Corrections are batched, and at least 8 different sentences are required. Training progress appears automatically; you can cancel it. Dictation pauses while training uses the local model. Each epoch is checked. The best candidate activates only when reserved-sentence errors improve, or replayed examples improve without worsening reserved-sentence errors. At least three distinct sentences and thirty words stay outside training. Replayed-example scores measure familiar examples, not general accuracy. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
 

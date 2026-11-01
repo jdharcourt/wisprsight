@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "./button/components/button";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
-import { request } from "../api";
+import { request, faceModelPath } from "../api";
 import { mouthMotion, sentenceFinished } from "../calibration-endpoint";
 import type { Profile } from "../app";
 
@@ -163,7 +163,7 @@ export function CalibrationSession({ profile, sentences, onClose, onComplete }: 
       if (video.current) { video.current.srcObject = stream; await video.current.play(); }
       try {
         const files = await FilesetResolver.forVisionTasks("/vision");
-        const face = await FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: "/api/face-model", delegate: "CPU" }, runningMode: "VIDEO", numFaces: 2 });
+        const face = await FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: faceModelPath(), delegate: "CPU" }, runningMode: "VIDEO", numFaces: 2 });
         if (!alive.current) { face.close(); return; }
         tracker.current = face;
       } catch {
