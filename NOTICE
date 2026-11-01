@@ -18,3 +18,9 @@ https://ui.usenotra.com/r/notra-sonner.json,
 https://ui.usenotra.com/r/notra-select.json,
 https://ui.usenotra.com/r/notra-sidebar.json and https://ui.usenotra.com/r/card.json.
 The earlier reduced button adapter has been removed.
+
+Browser audio inference uses Hugging Face Transformers.js (Apache-2.0), installed
+from npm. The separate ONNX Whisper base.en artifacts come from
+https://huggingface.co/onnx-community/whisper-base.en at revision
+51eefc0af78b103839eda9e7e4f4186acc6517fe. Their upstream model is OpenAI Whisper.
+Audio teacher weights are downloaded separately and remain outside Git.

@@ -147,13 +147,19 @@ The calibration introduction uses the actual panel InstrumentModule: a shell hea
 
 Registry alerts present errors inline with a title and actionable recovery where available. Base UI progress exposes calibration or training progress through a thin solid track. Direct Notra Sonner toasts appear bottom-right with success/error/warning semantics, close controls and descriptions. There are no fabricated success metrics.
 
+### Audio and Visual Comparison
+
+Spoken takes pair a local Whisper audio reference with the visual-only prediction from the same recording. Use the existing labeled textareas and plain supporting text: the reference remains editable, the visual prediction is read-only, and the word-error comparison updates with reference edits. Describe this as disagreement between predictions, not independently measured accuracy. Usable references save automatically; uncertain references require review. Saved references expose a correction action, and unsaved reference edits pause idle learning until saved or discarded.
+
 ### Calibration Sequence
 
 One sentence occupies the central stage. Automatic completion observes mouth motion followed by a pause, saves the example, then advances using a horizontal exit/entry animation. This is sentence progression, not an implemented touch-swipe gesture. Done remains available while recording; manual completion is the fallback when tracking is unavailable. Errors expose retry, and eligible states allow sentence editing. The final saved sentence leads into local training and an explicit completion state.
 
 Entry uses (280ms ease); exit uses (250ms ease). Reduced-motion preference removes sentence animation and global transitions/animations. Preserve progress, feedback and completion text when movement is absent.
 
-The preview uses the native browser camera permission flow. Calibration requests camera only with microphone off; the session releases camera tracks on exit and before training. Keep this privacy state visible beside the preview. These are observed interface behaviors, not a new data-retention policy.
+Silent calibration requests the camera with the microphone off; spoken calibration requests both through the native browser permission flow. Spoken prompts ask the user to read aloud. Local Whisper supplies the teacher reference while prediction remains visual-only. Usable examples save automatically; uncertain references or prompt mismatches pause the sequence with an editable Whisper reference, the visual prediction, and actions to save or record again. Training starts after the final saved sentence.
+
+The preview reports actual live camera and microphone state, including permission denial and released tracks. The session releases both devices on exit and before training. Keep this state visible beside the preview. These are observed interface behaviors, not a new data-retention policy.
 
 ## Do's and Don'ts
 

@@ -2,7 +2,7 @@ import type { Profile } from './app';
 import { wordErrors } from './browser-decoder';
 
 type Encoded = { memory: Float32Array; frames: number; version: string };
-type LocalProfile = Profile & { bias?: Float32Array; model_version?: string; validation_keys?: string[] };
+type LocalProfile = Profile & { bias?: Float32Array; visual?: Float32Array; model_version?: string; validation_keys?: string[] };
 type Sample = Encoded & { id: string; profile: string; text: string };
 type Job = { id: string; kind: string; status: string; message: string; progress: number; result?: unknown; cancelled: boolean };
 const jobs = new Map<string, Job>();
@@ -11,6 +11,8 @@ let loaded = false, vocabulary = 0, modelVersion = '', lastActivity = Date.now()
 let sequence = 0;
 const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; progress?: (message: string, value: number) => void }>();
 let worker: Worker | null = null;
+let audioWorker: Worker | null = null;
+let cancelAudio: (() => void) | null = null;
 const database = new Promise<IDBDatabase>((resolve, reject) => {
   const request = indexedDB.open('wisprsight-browser-v1', 2);
   request.onupgradeneeded = () => {
@@ -60,7 +62,7 @@ function model(method: string, args: Record<string, unknown> = {}, progress?: (m
 
 function running() { return [...jobs.values()].find(job => job.status === 'running'); }
 function key(text: string) { return (text.toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) ?? []).join(' '); }
-function summary(profile: LocalProfile) { const { bias, ...metadata } = profile; return metadata; }
+function summary(profile: LocalProfile) { const { bias, visual, ...metadata } = profile; return metadata; }
 function check(job: Job) { if (job.cancelled) throw new Error('Operation cancelled. Your saved examples are unchanged.'); }
 
 async function profile(id: string) {
@@ -75,7 +77,7 @@ function start(kind: string, operation: (job: Job) => Promise<unknown>) {
   jobs.clear();
   const job = { id: crypto.randomUUID(), kind, status: 'running', message: 'Processing in this browser…', progress: 0, cancelled: false } as Job;
   jobs.set(job.id, job);
-  operation(job).then(result => { job.result = result; job.status = job.cancelled ? 'cancelled' : 'done'; }).catch(error => { job.status = job.cancelled ? 'cancelled' : 'error'; job.message = error.message; });
+  operation(job).then(result => { if (kind === 'teach') lastActivity = Date.now(); job.result = result; job.status = job.cancelled ? 'cancelled' : 'done'; }).catch(error => { job.status = job.cancelled ? 'cancelled' : 'error'; job.message = error.message; });
   return { id: job.id };
 }
 
@@ -116,14 +118,42 @@ async function extract(blob: Blob, job: Job): Promise<Encoded> {
   } finally { video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(url); await model('reset').catch(() => undefined); }
 }
 
-export async function saveBrowserExample(id: string, encoded: Encoded, text: string, corrected: boolean) {
+async function audioReference(blob: Blob, job: Job) {
+  const context = new AudioContext({ sampleRate: 16000 });
+  let audio;
+  try {
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    if (decoded.duration < 0.8 || decoded.duration > 7.2) throw new Error('Record between one and seven seconds.');
+    audio = new Float32Array(decoded.length);
+    for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
+      const data = decoded.getChannelData(channel);
+      for (let i = 0; i < audio.length; i++) audio[i] += data[i] / decoded.numberOfChannels;
+    }
+  } catch { throw new Error('No readable microphone audio was captured. Allow the microphone and speak aloud.'); }
+  finally { await context.close(); }
+  check(job);
+  if (!audioWorker) audioWorker = new Worker(new URL('./audio-teacher.worker.ts', import.meta.url), { type: 'module' });
+  return await new Promise<{ text: string; reliable: boolean; teacher: string }>((resolve, reject) => {
+    cancelAudio = () => { clearTimeout(timer); audioWorker?.terminate(); audioWorker = null; reject(new Error('Audio teaching cancelled. Your examples are unchanged.')); };
+    const timer = window.setTimeout(() => { audioWorker?.terminate(); audioWorker = null; cancelAudio = null; reject(new Error('Whisper timed out. Try a shorter spoken recording.')); }, 180000);
+    audioWorker!.onmessage = event => {
+      if ('progress' in event.data) { job.message = event.data.message; job.progress = event.data.progress; return; }
+      clearTimeout(timer); cancelAudio = null;
+      if (event.data.error) reject(new Error(event.data.error)); else resolve(event.data.result);
+    };
+    audioWorker!.onerror = () => { clearTimeout(timer); audioWorker?.terminate(); audioWorker = null; cancelAudio = null; reject(new Error('The local Whisper worker stopped. Retry the recording.')); };
+    audioWorker!.postMessage({ id: job.id, audio }, [audio.buffer]);
+  });
+}
+
+export async function saveBrowserExample(id: string, encoded: Encoded, text: string, corrected: boolean, source = 'manual') {
   if (text.length > 300 || wordErrors(text, '').words < 3 || !/^[\x20-\x7e]+$/.test(text)) throw new Error('Use an English sentence with at least three words and at most 300 characters.');
   if (!(encoded.memory instanceof Float32Array) || encoded.memory.length !== encoded.frames * 768 || encoded.frames < 20 || encoded.frames > 180 || encoded.memory.some(value => !Number.isFinite(value))) throw new Error('The GPU produced invalid mouth features. Try a shorter recording or Python mode.');
   const current = await profile(id);
   if (current.samples.length >= 50) throw new Error('This browser prototype supports 50 saved examples per profile.');
   const sample = { ...encoded, id: crypto.randomUUID(), profile: id, text: text.trim() };
   await store('samples', 'readwrite', data => data.put(sample));
-  current.samples.push({ id: sample.id, text: sample.text, frames: sample.frames });
+  current.samples.push({ id: sample.id, text: sample.text, frames: sample.frames, source });
   if (corrected) current.learning_pending = true;
   await store('profiles', 'readwrite', data => data.put(current));
   return summary(current);
@@ -152,10 +182,10 @@ async function train(id: string, job: Job) {
       (current.validation_keys.includes(key(sample.text)) ? validation : training).push(stored);
     }
     check(job);
-    const result = await model('train', { training, validation, bias: current.model_version === modelVersion && current.bias ? current.bias : new Float32Array(vocabulary) }, (message, progress) => { job.message = message; job.progress = progress; });
+    const result = await model('train', { training, validation, bias: current.model_version === modelVersion && current.bias ? current.bias : new Float32Array(vocabulary), visual: current.model_version === modelVersion ? current.visual : undefined }, (message, progress) => { job.message = message; job.progress = progress; });
     check(job);
     current.calibration = result.calibration;
-    if (result.calibration.accepted) { current.bias = result.bias; current.model_version = modelVersion; }
+    if (result.calibration.accepted) { current.bias = result.bias; current.visual = result.visual; current.model_version = modelVersion; }
     await store('profiles', 'readwrite', data => data.put(current));
     return result.calibration;
   } finally {
@@ -179,6 +209,7 @@ export async function browserRequest(path: string, options: RequestInit = {}) {
   if (path === '/api/browser/load') return start('load', async job => { const info = await model('load', {}, (message, progress) => { job.message = message; job.progress = progress; }); loaded = true; vocabulary = info.vocabulary; modelVersion = info.version; return info; });
   if (path === '/api/activity') { if (running()) throw new Error('Wait for local learning or cancel it before recording.'); return { recording: true }; }
   if (path === '/api/profiles' && method === 'POST') {
+    if (running()) throw new Error('Wait for the current task before creating a profile.');
     const name = JSON.parse(String(options.body)).name;
     if (typeof name !== 'string' || !name.trim() || name.length > 60) throw new Error('Use a profile name of 1–60 characters.');
     if ((await store<LocalProfile[]>('profiles', 'readonly', data => data.getAll())).length >= 10) throw new Error('This browser supports ten local profiles.');
@@ -194,7 +225,7 @@ export async function browserRequest(path: string, options: RequestInit = {}) {
   }
   if (parts[2] === 'jobs') {
     const job = jobs.get(id); if (!job) throw new Error('Browser task was lost when the page closed. Your saved examples remain.');
-    if (parts[4] === 'cancel') { job.cancelled = true; worker?.postMessage({ method: 'cancel' }); job.message = 'Cancelling the current local operation…'; return { requested: true }; }
+    if (parts[4] === 'cancel') { job.cancelled = true; cancelAudio?.(); cancelAudio = null; worker?.postMessage({ method: 'cancel' }); job.message = 'Cancelling the current local operation…'; return { requested: true }; }
     return structuredClone(job);
   }
   if (parts[2] === 'train') return start('train', job => train(id, job));
@@ -203,19 +234,40 @@ export async function browserRequest(path: string, options: RequestInit = {}) {
     if (!correction || correction.profile !== id || correction.expires < Date.now()) throw new Error('This take has expired. Record it again before saving a correction.');
     return start('correction', async () => { const saved = await saveBrowserExample(id, correction, body.text, true); corrections.delete(body.token); return saved; });
   }
-  if (parts[2] === 'transcribe' || parts[2] === 'samples') {
+  if (parts[2] === 'samples' && method === 'PATCH') {
+    if (running()) throw new Error('Wait for the current task before editing an example.');
+    const current = await profile(id), text = JSON.parse(String(options.body)).text;
+    if (typeof text !== 'string' || text.length > 300 || wordErrors(text, '').words < 3 || !/^[\x20-\x7e]+$/.test(text)) throw new Error('Use an English reference with three words and at most 300 characters.');
+    const sample = current.samples.find(sample => sample.id === parts[4]);
+    if (!sample) throw new Error('Choose an existing example from this profile.');
+    if (current.validation_keys?.some(value => value === key(sample.text) || value === key(text))) throw new Error('This sentence is reserved for validation. Record a fresh training take instead.');
+    const stored = await store<Sample>('samples', 'readonly', data => data.get(sample.id));
+    if (!stored || stored.profile !== id) throw new Error('This example is missing. Record it again.');
+    stored.text = text.trim(); sample.text = stored.text; sample.source = 'manual'; current.learning_pending = true;
+    await store('samples', 'readwrite', data => data.put(stored));
+    await store('profiles', 'readwrite', data => data.put(current));
+    return summary(current);
+  }
+  if (parts[2] === 'transcribe' || parts[2] === 'samples' || parts[2] === 'teach') {
     await profile(id);
     let payload = options.body as Blob | null;
     const reference = new Headers(options.headers).get('x-reference') ?? '';
-    return start(parts[2] === 'samples' ? 'sample' : 'transcribe', async job => {
-      const started = performance.now(), encoded = await extract(payload!, job); payload = null;
+    return start(parts[2] === 'samples' ? 'sample' : parts[2] === 'teach' ? 'teach' : 'transcribe', async job => {
+      const started = performance.now(), encoded = await extract(payload!, job);
+      const audio = parts[2] === 'teach' ? await audioReference(payload!, job) : null; payload = null;
       check(job);
       if (parts[2] === 'samples') return saveBrowserExample(id, encoded, reference, false);
       job.message = 'Decoding your sentence locally…';
-      const current = await profile(id), text = await model('decode', { encoded, bias: current.model_version === modelVersion && current.bias ? current.bias : new Float32Array(vocabulary) });
+      const current = await profile(id), text = await model('decode', { encoded, bias: current.model_version === modelVersion && current.bias ? current.bias : new Float32Array(vocabulary), visual: current.model_version === modelVersion ? current.visual : undefined });
       check(job);
       while (corrections.size >= 3) corrections.delete(corrections.keys().next().value!);
       const token = crypto.randomUUID(); corrections.set(token, { ...encoded, profile: id, expires: Date.now() + 300000 });
+      if (audio) {
+        const comparison = wordErrors(audio.text, text);
+        let saved;
+        if (audio.reliable && (!reference || wordErrors(reference, audio.text).errors <= Math.floor(wordErrors(reference, '').words * 0.15))) { saved = await saveBrowserExample(id, encoded, audio.text, true, 'whisper'); corrections.delete(token); }
+        return { text: audio.text, visual_text: text.toLowerCase().replace(/(^|\s)[a-z]/g, (letter: string) => letter.toUpperCase()), comparison: { ...comparison, wer: comparison.errors / comparison.words }, saved: !!saved, sample_id: saved?.samples.at(-1)?.id, correction_id: saved ? undefined : token, teacher: audio.teacher };
+      }
       return { text: text.toLowerCase().replace(/(^|\s)[a-z]/g, (letter: string) => letter.toUpperCase()), inference_seconds: Math.round((performance.now() - started) / 10) / 100, correction_id: token, device: 'WebGPU' };
     });
   }

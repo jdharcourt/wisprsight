@@ -255,7 +255,64 @@ def save_sample(payload, profile_id, text):
     return store_sample(extract_video(payload), profile_id, text)
 
 
-def save_correction(profile_id, token, text):
+def teach(payload, profile_id, reference, job, cancelled):
+    read_profile(profile_id)
+    job.update(message="Transcribing speech with local Whisper…", progress=0.1)
+    audio = label_audio(payload)
+    if cancelled.is_set():
+        return {}
+    job.update(message="Comparing the camera-only prediction…", progress=0.5)
+    visual = transcribe(payload, profile_id)
+    if cancelled.is_set():
+        return {}
+    errors, words = word_errors(audio["text"], visual["text"])
+    result = {
+        "text": audio["text"],
+        "visual_text": visual["text"],
+        "comparison": {"errors": errors, "words": words, "wer": errors / words},
+        "correction_id": visual["correction_id"],
+        "saved": False,
+        "teacher": "Local Whisper",
+    }
+    if audio.get("reliable", False) and (
+        not reference
+        or word_errors(reference, audio["text"])[0]
+        <= math.floor(len(normalize(reference)) * 0.15)
+    ):
+        saved = save_correction(
+            profile_id, visual["correction_id"], audio["text"], source="whisper"
+        )
+        result.update(saved=True, sample_id=saved["samples"][-1]["id"])
+        result.pop("correction_id")
+    return result
+
+
+def revise_sample(profile_id, sample_id, text):
+    if not 1 <= len(text) <= 300 or not text.isascii() or len(normalize(text)) < 3:
+        raise ValueError(
+            "Use an English sentence with three words and at most 300 characters."
+        )
+    profile = read_profile(profile_id)
+    sample = next(
+        (item for item in profile["samples"] if item["id"] == sample_id), None
+    )
+    if sample is None:
+        raise ValueError("Choose an existing example from this profile.")
+    if any(
+        " ".join(normalize(value)) in profile.get("validation_keys", [])
+        for value in [sample["text"], text]
+    ):
+        raise ValueError(
+            "This sentence is reserved for validation. Record a fresh training take instead."
+        )
+    sample["text"] = text.strip()
+    sample["source"] = "manual"
+    profile["learning_pending"] = True
+    write_json(profile_path(profile_id) / "profile.json", profile)
+    return profile
+
+
+def save_correction(profile_id, token, text, source="manual"):
     with _correction_lock:
         pending = _corrections.get(str(UUID(str(token))))
     if (
@@ -266,7 +323,7 @@ def save_correction(profile_id, token, text):
         raise ValueError(
             "This recording has expired. Record the sentence again to save a correction."
         )
-    result = store_sample(pending["crops"], profile_id, text)
+    result = store_sample(pending["crops"], profile_id, text, source=source)
     result["learning_pending"] = True
     write_json(profile_path(profile_id) / "profile.json", result)
     with _correction_lock:
@@ -274,7 +331,7 @@ def save_correction(profile_id, token, text):
     return result
 
 
-def store_sample(crops, profile_id, text):
+def store_sample(crops, profile_id, text, source="manual"):
     profile = read_profile(profile_id)
     if len(profile["samples"]) >= 100:
         raise ValueError("This prototype supports up to 100 examples per profile.")
@@ -285,7 +342,7 @@ def store_sample(crops, profile_id, text):
     sample_id = str(uuid4())
     np.save(profile_path(profile_id) / f"{sample_id}.npy", crops, allow_pickle=False)
     profile["samples"].append(
-        {"id": sample_id, "text": text.strip(), "frames": len(crops)}
+        {"id": sample_id, "text": text.strip(), "frames": len(crops), "source": source}
     )
     write_json(profile_path(profile_id) / "profile.json", profile)
     return profile
@@ -311,6 +368,9 @@ def label_audio(payload):
                 samples.append(output.to_ndarray().reshape(-1))
     if total < 8_000:
         raise ValueError("Record a spoken sentence or type its reference text.")
+    waveform = np.concatenate(samples)
+    if not np.isfinite(waveform).all() or np.sqrt(np.mean(waveform**2)) < 0.002:
+        raise ValueError("The microphone is too quiet. Speak aloud and record again.")
     if not (MODELS / "whisper" / "model.bin").exists():
         raise ValueError(
             "Local speech-label models are missing. Download the models first."
@@ -321,7 +381,10 @@ def label_audio(payload):
         compute_type="int8",
         local_files_only=True,
     )
-    segments, _ = model.transcribe(np.concatenate(samples), language="en", beam_size=3)
+    segments, _ = model.transcribe(
+        waveform, language="en", beam_size=3, vad_filter=True
+    )
+    segments = list(segments)
     text = " ".join(segment.text.strip() for segment in segments).strip()
     del model
     gc.collect()
@@ -329,7 +392,20 @@ def label_audio(payload):
         raise ValueError(
             "No speech was recognized. Try again or type the reference sentence."
         )
-    return {"text": text}
+    text = text.replace("’", "'").replace("“", '"').replace("”", '"')
+    if not text.isascii() or len(text) > 300 or len(normalize(text)) < 3:
+        raise ValueError(
+            "Whisper needs a clear English sentence of at least three words and at most 300 characters."
+        )
+    return {
+        "text": text,
+        "reliable": all(
+            segment.avg_logprob >= -1
+            and segment.no_speech_prob < 0.6
+            and segment.compression_ratio < 2.4
+            for segment in segments
+        ),
+    }
 
 
 def normalize(text):

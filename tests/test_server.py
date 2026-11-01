@@ -245,3 +245,118 @@ def test_automatic_learning_waits_for_enough_data_and_stops_after_failure(
     assert not engine.read_profile(profile["id"])["learning_pending"]
     server.run_pending_learning()
     assert not queued
+
+
+def test_audio_teacher_saves_same_take_and_queues_visual_learning(client, monkeypatch):
+    import threading
+
+    profile = engine.create_profile("Audio teacher test")
+    token = str(uuid4())
+    crops = np.zeros((30, 96, 96), dtype=np.uint8)
+    engine._corrections[token] = {
+        "profile": profile["id"],
+        "crops": crops,
+        "expires": float("inf"),
+    }
+    monkeypatch.setattr(
+        engine,
+        "label_audio",
+        lambda payload: {"text": "Please open the window today", "reliable": True},
+    )
+    monkeypatch.setattr(
+        engine,
+        "transcribe",
+        lambda payload, profile_id: {
+            "text": "Please close the window today",
+            "correction_id": token,
+        },
+    )
+    result = engine.teach(b"same recording", profile["id"], "", {}, threading.Event())
+    assert result["saved"] and result["comparison"]["errors"] == 1
+    saved = engine.read_profile(profile["id"])
+    assert saved["learning_pending"]
+    assert saved["samples"][0]["source"] == "whisper"
+    assert np.array_equal(
+        np.load(engine.profile_path(profile["id"]) / f"{result['sample_id']}.npy"),
+        crops,
+    )
+    assert not list(engine.profile_path(profile["id"]).glob("*.webm"))
+    changed = client.patch(
+        f"/api/samples/{profile['id']}/{result['sample_id']}",
+        json={"text": "Please open the other window today"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["samples"][0]["source"] == "manual"
+    other = engine.create_profile("Other profile")
+    assert (
+        client.patch(
+            f"/api/samples/{other['id']}/{result['sample_id']}",
+            json={"text": "Please open the window today"},
+        ).status_code
+        == 400
+    )
+
+
+def test_audio_teacher_reviews_uncertainty_prompt_mismatch_and_cancellation(
+    client, monkeypatch
+):
+    import threading
+
+    profile = engine.create_profile("Review test")
+    monkeypatch.setattr(
+        engine,
+        "transcribe",
+        lambda *args: {"text": "A visual prediction", "correction_id": str(uuid4())},
+    )
+    monkeypatch.setattr(
+        engine,
+        "label_audio",
+        lambda payload: {"text": "Please open the window today", "reliable": False},
+    )
+    assert not engine.teach(b"same take", profile["id"], "", {}, threading.Event())[
+        "saved"
+    ]
+    monkeypatch.setattr(
+        engine,
+        "label_audio",
+        lambda payload: {"text": "Please open the window today", "reliable": True},
+    )
+    assert not engine.teach(
+        b"same take",
+        profile["id"],
+        "This is a completely different sentence",
+        {},
+        threading.Event(),
+    )["saved"]
+    cancelled = threading.Event()
+    cancelled.set()
+    assert engine.teach(b"same take", profile["id"], "", {}, cancelled) == {}
+    assert engine.read_profile(profile["id"])["samples"] == []
+    assert (
+        client.post(
+            f"/api/teach/{profile['id']}",
+            content=b"invalid",
+            headers={"Content-Type": "video/webm"},
+        ).status_code
+        == 415
+    )
+
+
+def test_reference_edits_cannot_move_examples_into_or_out_of_validation(client):
+    profile = engine.create_profile("Validation labels")
+    saved = engine.store_sample(
+        np.zeros((30, 96, 96), dtype=np.uint8),
+        profile["id"],
+        "This sentence stays outside training",
+    )
+    saved["validation_keys"] = [
+        "this sentence stays outside training",
+        "another reserved reference sentence here",
+    ]
+    engine.write_json(engine.profile_path(profile["id"]) / "profile.json", saved)
+    with pytest.raises(ValueError, match="reserved"):
+        engine.revise_sample(
+            profile["id"],
+            saved["samples"][0]["id"],
+            "Change this reserved sentence please",
+        )

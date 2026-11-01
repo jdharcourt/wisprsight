@@ -3,10 +3,11 @@ import { createReadStream, readFileSync, statSync, readdirSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 const runtimeFile = readdirSync('dist/assets').find(file => file.startsWith('browser-runtime-') && file.endsWith('.js'));
-const root = resolve('dist'), fixture = resolve('../.local/browser-check'), origin = 'https://localhost:8780';
+const port = Number(process.env.WISPRSIGHT_BROWSER_PORT ?? 8782);
+const root = resolve('dist'), fixture = resolve('../.local/browser-check'), origin = `https://localhost:${port}`;
 const server = createServer({ cert: readFileSync('../.local/localhost.pem'), key: readFileSync('../.local/localhost-key.pem') }, (request, response) => {
   response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-StEaX+se6YS7pqjzrzMIA0KaX9zF/8zAhvQXZAe5epY='; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
-  response.setHeader('Permissions-Policy', 'camera=(self), microphone=()'); response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('Permissions-Policy', 'camera=(self), microphone=(self)'); response.setHeader('X-Content-Type-Options', 'nosniff');
   let pathname = decodeURIComponent(new URL(request.url, origin).pathname);
   if (pathname.startsWith('/api/')) { response.writeHead(404); response.end('No Python API exists here.'); return; }
   const base = pathname.startsWith('/test/') ? fixture : root;
@@ -18,10 +19,10 @@ const server = createServer({ cert: readFileSync('../.local/localhost.pem'), key
     response.writeHead(200, { 'Content-Type': type, 'Content-Length': statSync(path).size }); createReadStream(path).pipe(response);
   } catch { response.writeHead(404); response.end(); }
 });
-await new Promise(resolve => server.listen(8780, '127.0.0.1', resolve));
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-video-capture=/private/tmp/wisprsight-calibration-camera.y4m'] });
+await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-audio-capture=/private/tmp/wisprsight-teacher-audio.wav', '--use-file-for-fake-video-capture=/private/tmp/wisprsight-calibration-camera.y4m'] });
 try {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 }, permissions: ['camera'] });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 }, permissions: ['camera', 'microphone'] });
   const page = await context.newPage(), requests = [], errors = [];
   page.on('request', request => { if (new URL(request.url()).origin !== origin || new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()); });
   page.on('pageerror', error => errors.push(error.message));
@@ -76,6 +77,29 @@ try {
   await expect(page.getByText('Correction saved. Local learning is queued automatically.', { exact: true })).toBeVisible();
   console.log('PASS: recorded browser video, face alignment, inference and persistent correction.');
   await page.getByRole('button', { name: 'Camera off', exact: true }).click();
+  await page.getByRole('button', { name: 'Calibration', exact: true }).click();
+  await page.getByRole('button', { name: 'Add a custom sentence instead', exact: true }).click();
+  await page.getByRole('button', { name: 'Learn from speech', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  if (await page.locator('video').evaluate(video => video.srcObject.getAudioTracks().length) !== 1) throw new Error('Spoken learning did not capture a microphone track.');
+  await page.waitForTimeout(4000);
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Audio and visual comparison' })).toBeVisible({ timeout: 240000 });
+  const reference = await page.getByLabel('Reference sentence', { exact: true }).inputValue();
+  if (!/new york city/i.test(reference)) throw new Error('Whisper reference did not match the recorded speech: ' + reference);
+  await expect(page.getByText('Speech example saved. Local learning is queued automatically.', { exact: true })).toBeVisible();
+  const corrected = reference.replace(/Nancy Davis/i, 'Nancy Reagan');
+  await page.getByLabel('Reference sentence', { exact: true }).fill(corrected);
+  await page.getByRole('button', { name: 'Save reference correction', exact: true }).click();
+  await expect(page.getByText('Reference corrected. Local learning is queued automatically.', { exact: true })).toBeVisible();
+  if (await page.locator('video').evaluate(video => video.srcObject.getAudioTracks().length) !== 0) throw new Error('Microphone remained active after the spoken take.');
+  await page.getByRole('button', { name: 'Camera off', exact: true }).click();
+  await page.screenshot({ path: '../.impeccable/review/audio-visual-desktop.png', animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 1600 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '../.impeccable/review/audio-visual-mobile.png', animations: 'disabled' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  console.log('PASS: real audio-video take, Whisper reference, visual comparison, automatic example save, reference correction and microphone release.');
   if (process.env.BROWSER_PERSONALIZATION_CHECK === '1') {
     const learning = await page.evaluate(async file => {
       const runtime = await import('/assets/' + file);

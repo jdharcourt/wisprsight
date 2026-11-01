@@ -3,6 +3,7 @@ import { Camera, Circle, Copy, Mic, Settings, SlidersHorizontal, Square, UserRou
 import { Button } from "./components/button/components/button";
 import { Toaster } from "./components/sonner/components/sonner";
 import { toast } from "sonner";
+import { wordErrors } from "./browser-decoder";
 import { request, isBrowserRuntime } from "./api";
 import { CalibrationSession } from "./components/calibration-session";
 import { InstrumentModule } from "./components/card/components/instrument-module";
@@ -13,7 +14,8 @@ import { ProfileSelect } from "./components/profile-select";
 
 type Score = { errors: number; words: number; wer: number };
 type Calibration = { baseline: Score; candidate: Score; accepted: boolean; message: string; replay_baseline?: Score; replay_candidate?: Score };
-export type Profile = { id: string; name: string; samples: { id: string; text: string; frames: number }[]; calibration: Calibration | null; learning_pending?: boolean };
+export type Profile = { id: string; name: string; samples: { id: string; text: string; frames: number; source?: string }[]; calibration: Calibration | null; learning_pending?: boolean };
+type AudioTake = { text: string; visual_text: string; comparison: Score; saved: boolean; sample_id?: string; correction_id?: string; teacher: string };
 type Job = { id: string; kind: string; status: string; message: string; progress: number; result?: { text?: string; inference_seconds?: number; correction_id?: string } & Partial<Calibration> };
 
 const prompts = [
@@ -56,6 +58,8 @@ function sentenceKey(text: string) {
 export function App() {
   const [page, setPage] = useState("Dictate");
   const [calibrationSentences, setCalibrationSentences] = useState<string[] | null>(null);
+  const [spokenCalibration, setSpokenCalibration] = useState(false);
+  const [audioTake, setAudioTake] = useState<AudioTake | null>(null);
   const [showManual, setShowManual] = useState(false);
   const [correctionId, setCorrectionId] = useState("");
   const [csrf, setCsrf] = useState("");
@@ -84,7 +88,17 @@ export function App() {
   useEffect(() => { if (notice) toast.success(notice); }, [notice]);
   const running = job?.status === "running";
   const profile = profiles.find(item => item.id === selected);
+  const editingReference = !!audioTake && reference !== audioTake.text;
+  const audioComparison = audioTake ? wordErrors(reference, audioTake.visual_text) : null;
   const distinctExamples = new Set(profile?.samples.map(sample => sentenceKey(sample.text))).size;
+
+  useEffect(() => {
+    if (!editingReference || running) return;
+    const activity = () => request("/api/activity", { method: "POST" }).catch(() => undefined);
+    activity();
+    const timer = window.setInterval(activity, 5000);
+    return () => window.clearInterval(timer);
+  }, [editingReference, running]);
 
   useEffect(() => {
     const current = profiles.find(item => item.id === selected);
@@ -132,6 +146,7 @@ export function App() {
         if (next.status !== "done") return;
         if (next.kind === "transcribe") { setText(next.result.text); setLatency(next.result.inference_seconds); setCorrectionId(next.result.correction_id ?? ""); }
         if (next.kind === "load") { await refresh(); setNotice("Browser model ready. Recordings and learning stay on this laptop."); }
+        if (next.kind === "teach") { setAudioTake(next.result); setReference(next.result.text); setNotice(next.result.saved ? "Speech example saved. Local learning is queued automatically." : "Check Whisper’s reference, then save it to teach the visual model."); await refresh(); }
         if (next.kind === "label") { setReference(next.result.text.slice(0, 300)); setNotice("Check this sentence, then record it silently."); }
         if (next.kind === "sample") { setTake(null); setReference(prompts.find(sentence => !next.result.samples.some((sample: Profile["samples"][number]) => sentenceKey(sample.text) === sentenceKey(sentence))) ?? prompts[0]); setNotice("Example saved. Record the next sentence when ready."); await refresh(); }
         if (next.kind === "correction") { setCorrectionId(""); setNotice("Correction saved. Local learning is queued automatically."); await refresh(); }
@@ -165,7 +180,7 @@ export function App() {
     acquiring.current = true; setStarting(true);
     const generation = ++captureGeneration.current;
     try {
-      setError(""); setNotice(""); setTake(null); setCorrectionId(""); discard.current = false;
+      setError(""); setNotice(""); setTake(null); setAudioTake(null); setCorrectionId(""); discard.current = false;
       await request("/api/activity", { method: "POST" });
       const media = await startCamera(kind === "spoken", generation);
       if (!media) return;
@@ -183,7 +198,7 @@ export function App() {
         if (recorder.current === current) recorder.current = null;
         if (!blob) return;
         try {
-          if (kind === "spoken") await startJob("/api/label", blob);
+          if (kind === "spoken") await startJob(`/api/teach/${selected}`, blob);
           else if (page === "Calibration") setTake(blob);
           else await startJob(`/api/transcribe/${selected}`, blob);
         } catch (error) { setError((error as Error).message); }
@@ -206,15 +221,35 @@ export function App() {
     setRecording(null); setCamera(false); setTake(null);
   }
 
+  async function calibrate(spoken: boolean) {
+    try {
+      await request("/api/activity", { method: "POST" }); stopCamera(); setAudioTake(null); setSpokenCalibration(spoken);
+      const remaining = prompts.filter(sentence => !profile?.samples.some(sample => sentenceKey(sample.text) === sentenceKey(sentence)));
+      setCalibrationSentences((remaining.length ? remaining : prompts).slice(0, Math.max(8 - distinctExamples, 1)));
+    } catch (error) { setError((error as Error).message); }
+  }
+
+  async function saveAudioReference() {
+    if (!audioTake) return;
+    try {
+      if (audioTake.sample_id) {
+        await request(`/api/samples/${selected}/${audioTake.sample_id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: reference }) });
+        setAudioTake({ ...audioTake, text: reference }); await refresh(); setNotice("Reference corrected. Local learning is queued automatically."); return;
+      }
+      await startJob(`/api/corrections/${selected}`, JSON.stringify({ token: audioTake.correction_id, text: reference }), { "Content-Type": "application/json" });
+      setAudioTake(null);
+    } catch (error) { setError((error as Error).message); }
+  }
+
   async function addProfile(event: React.FormEvent) {
     event.preventDefault();
     try {
       const result = await request("/api/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-      await refresh(); setSelected(result.id); setName(""); setPage("Calibration"); setNotice("Your profile starts with the shared pretrained model.");
+      await refresh(); setAudioTake(null); setSelected(result.id); setName(""); setPage("Calibration"); setNotice("Your profile starts with the shared pretrained model.");
     } catch (error) { setError((error as Error).message); }
   }
 
-  if (calibrationSentences && profile) return <><Toaster closeButton position="bottom-right" /><CalibrationSession profile={profile} sentences={calibrationSentences} onClose={() => { setCalibrationSentences(null); refresh().catch(error => setError(error.message)); }} onComplete={() => { setCalibrationSentences(null); setPage("Dictate"); refresh().catch(error => setError(error.message)); }} /></>;
+  if (calibrationSentences && profile) return <><Toaster closeButton position="bottom-right" /><CalibrationSession profile={profile} sentences={calibrationSentences} spoken={spokenCalibration} onClose={() => { setCalibrationSentences(null); refresh().catch(error => setError(error.message)); }} onComplete={() => { setCalibrationSentences(null); setPage("Dictate"); refresh().catch(error => setError(error.message)); }} /></>;
 
   return (
     <SidebarProvider className="app notra-workspace" defaultOpen={false} defaultWidth={248} minWidth={240} maxWidth={256}>
@@ -228,18 +263,18 @@ export function App() {
         <header className="toolbar">
           <SidebarTrigger disabled={starting || !!recording} />
           <span className="toolbar-title">{page}</span>
-          <div className="toolbar-right"><span className="model-status">{ready ? "On device" : isBrowserRuntime() ? "Model not loaded" : "Models missing"}</span><ProfileSelect profiles={profiles} value={selected} disabled={starting || !!recording || !!running} onChange={value => { setSelected(value); setTake(null); setText(""); setCorrectionId(""); setLatency(null); setNotice(""); }} /></div>
+          <div className="toolbar-right"><span className="model-status">{ready ? "On device" : isBrowserRuntime() ? "Model not loaded" : "Models missing"}</span><ProfileSelect profiles={profiles} value={selected} disabled={starting || !!recording || !!running} onChange={value => { setSelected(value); setAudioTake(null); setTake(null); setText(""); setCorrectionId(""); setLatency(null); setNotice(""); }} /></div>
         </header>
         <div className="workspace">
           <div className="page-heading"><h1>{page}</h1><p>{page === "Dictate" ? "Mouth a sentence, review your words, and copy them anywhere." : page === "Calibration" ? "Calibrate in full screen. Each sentence saves automatically, then your model trains." : "Your profiles and training data stay on this laptop."}</p></div>
-          {isBrowserRuntime() && <Alert className="mb-5"><AlertDescription>Running in this browser. Profiles are stored on this device, separately from Python profiles. Browser learning adjusts word probabilities; Python mode trains the visual frontend.</AlertDescription></Alert>}
+          {isBrowserRuntime() && <Alert className="mb-5"><AlertDescription>Running in this browser. Profiles are stored on this device, separately from Python profiles. Browser learning trains a small adapter on visual features; Python mode trains the visual frontend.</AlertDescription></Alert>}
           {profile?.learning_pending && !running && <Alert><AlertDescription>{distinctExamples < 8 ? "Correction saved. Automatic learning starts once you have 8 different sentences." : "Corrections are saved. Local learning starts automatically after 30 seconds without recording. You can cancel it while it runs."}</AlertDescription></Alert>}
           {error && <Alert variant="destructive" className="mb-5"><AlertDescription>{error}</AlertDescription></Alert>}
 
           {!ready && <div className="install-notice"><strong>{isBrowserRuntime() ? "Load the model on this laptop" : "Install the models to begin."}</strong>{isBrowserRuntime() ? <><p>The first download is about 1 GB, and files are cached when browser storage allows. Chrome with WebGPU is required. Camera recordings stay on your laptop.</p><Button disabled={!!running} onClick={() => startJob("/api/browser/load").catch(error => setError(error.message))}>Load browser model</Button></> : <p>Run <code>uv run wisprsight download-models</code> once in the project folder, then reload this page.</p>}</div>}
-          {!profiles.length && <section className="first-profile"><h2>Create a profile</h2><p>Start with the shared model. Your examples personalize it to you.</p><form onSubmit={addProfile}><label htmlFor="first-name">Profile name</label><div className="input-action"><input id="first-name" maxLength={60} value={name} onChange={event => setName(event.target.value)} required placeholder="Your name" /><Button type="submit" disabled={!name.trim() || !csrf}>Create profile</Button></div></form></section>}
-          {page === "Calibration" && !showManual && <InstrumentModule eyebrow="Personal calibration" variant="panel" description="Mouth one sentence at a time. We detect the pause, save the take, and move to the next. Training starts automatically at the end." action={<Button disabled={!profile || !ready || !!running} onClick={async () => { try { await request("/api/activity", { method: "POST" }); stopCamera(); const remaining = prompts.filter(sentence => !profile?.samples.some(sample => sentenceKey(sample.text) === sentenceKey(sentence))); setCalibrationSentences((remaining.length ? remaining : prompts).slice(0, Math.max(8 - distinctExamples, 1))); } catch (error) { setError((error as Error).message); } }}>Start calibration</Button>}><Progress value={Math.min(distinctExamples / 8 * 100, 100)} aria-label="Calibration examples" /><p className="mt-3 text-sm text-muted-foreground">{distinctExamples} different sentences saved. {distinctExamples < 8 ? "We’ll complete a set of 8, then train your model." : "Initial calibration is complete. Additional sentences are optional."}</p><Button variant="ghost" size="sm" className="mt-3" onClick={() => setShowManual(true)}>Add a custom sentence instead</Button></InstrumentModule>}
-          {page === "Calibration" && showManual && <section className="reference-section"><label htmlFor="reference">Reference sentence</label><textarea id="reference" rows={2} value={reference} maxLength={300} disabled={starting || !!recording || !!running} onChange={event => setReference(event.target.value)} /><div className="reference-actions"><Button variant="outline" disabled={starting || !!take || !!recording || !!running} onClick={() => setReference(prompts[(prompts.indexOf(reference) + 1) % prompts.length])}>Next suggestion</Button><Button variant="ghost" disabled={isBrowserRuntime() || starting || !ready || !profile || !!recording || !!running} onClick={() => record("spoken")}><Mic size={14} />Record spoken reference</Button></div><p className="supporting">{isBrowserRuntime() ? "Use a suggestion or type your own sentence. You can edit the words before saving." : "Use a suggestion, type your own sentence, or say one with the microphone. You can edit the words before saving."}</p></section>}
+          {!profiles.length && <section className="first-profile"><h2>Create a profile</h2><p>Start with the shared model. Your examples personalize it to you.</p><form onSubmit={addProfile}><label htmlFor="first-name">Profile name</label><div className="input-action"><input id="first-name" maxLength={60} value={name} onChange={event => setName(event.target.value)} required placeholder="Your name" /><Button type="submit" disabled={!name.trim() || !csrf || !!running}>Create profile</Button></div></form></section>}
+          {page === "Calibration" && !showManual && <InstrumentModule eyebrow="Personal calibration" variant="panel" description="Mouth one sentence at a time. We detect the pause, save the take, and move to the next. Training starts automatically at the end." action={<div className="flex flex-wrap gap-2"><Button disabled={!profile || !ready || !!running} onClick={() => calibrate(false)}>Start calibration</Button><Button variant="outline" disabled={!profile || !ready || !!running} onClick={() => calibrate(true)}><Mic size={14} />Spoken calibration</Button></div>}><Progress value={Math.min(distinctExamples / 8 * 100, 100)} aria-label="Calibration examples" /><p className="mt-3 text-sm text-muted-foreground">{distinctExamples} different sentences saved. {distinctExamples < 8 ? "We’ll complete a set of 8, then train your model." : "Initial calibration is complete. Additional sentences are optional."}</p><Button variant="ghost" size="sm" className="mt-3" onClick={() => setShowManual(true)}>Add a custom sentence instead</Button></InstrumentModule>}
+          {page === "Calibration" && showManual && <section className="reference-section"><label htmlFor="reference">Reference sentence</label><textarea id="reference" rows={2} value={reference} maxLength={300} disabled={starting || !!recording || !!running} onChange={event => setReference(event.target.value)} /><div className="reference-actions"><Button variant="outline" disabled={starting || !!take || !!audioTake || !!recording || !!running} onClick={() => setReference(prompts[(prompts.indexOf(reference) + 1) % prompts.length])}>Next suggestion</Button><Button variant="ghost" disabled={starting || !ready || !profile || !!recording || !!running} onClick={() => record("spoken")}><Mic size={14} />Learn from speech</Button></div><p className="supporting">Speak naturally while facing your camera. Local Whisper labels the same take, compares it with the visual prediction, and queues learning. You can correct its reference below. The first spoken take loads an additional 80 MB audio model.</p></section>}
           {(page === "Dictate" || (page === "Calibration" && showManual)) && <section className="capture-area" aria-label="Camera and recording">
             <div className={camera ? "camera-preview enabled" : "camera-preview"}>
               <video ref={video} autoPlay muted playsInline hidden={!camera} aria-label="Mirrored camera preview" />
@@ -251,10 +286,11 @@ export function App() {
               {page === "Calibration" && take && <><Button disabled={!!running || !profile} onClick={() => startJob(`/api/samples/${selected}`, take, { "x-reference": reference.replace(/\s+/g, " ").trim() }).catch(error => setError(error.message))}><Check size={14} />Save example</Button><Button variant="ghost" onClick={() => setTake(null)}>Retake</Button></>}
             </div>
           </section>}
+          {page === "Calibration" && showManual && audioTake && <section className="reference-section" aria-label="Audio and visual comparison"><h2>Audio and visual comparison</h2><p>Audio teacher: {audioTake.teacher}. {audioTake.saved ? "Example saved; learning is queued." : "This reference needs your review before it is saved."}</p><label htmlFor="visual-prediction">Visual prediction</label><textarea id="visual-prediction" rows={2} readOnly value={audioTake.visual_text} /><p>{audioComparison?.errors} word errors across {audioComparison?.words} audio-reference words. This compares two predictions, not independently measured accuracy.</p><Button variant="outline" disabled={!!running || !reference.trim() || reference === audioTake.text && audioTake.saved} onClick={saveAudioReference}>{audioTake.saved ? "Save reference correction" : "Save reviewed reference"}</Button><p className="supporting">Edit Reference sentence above if Whisper got a word wrong. The audio teacher can make mistakes. Full audio and video are discarded after processing.</p></section>}
           {running && <section className="job" role="status"><span>{job.message}</span><Button variant="ghost" onClick={() => request(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then(() => setNotice("Cancellation requested. The current operation will finish safely.")).catch(error => setError(error.message))}>Cancel task</Button></section>}
           {page === "Dictate" && <section className="transcript-section"><div className="section-heading"><label htmlFor="transcript">Transcript</label>{latency !== null && <span>{latency}s inference</span>}</div><textarea id="transcript" rows={4} value={text} maxLength={10000} placeholder="Your words will appear here." onChange={event => setText(event.target.value)} /><div className="text-actions"><Button variant="outline" disabled={!text} onClick={() => navigator.clipboard.writeText(text).then(() => setNotice("Copied to clipboard.")).catch(() => setError("Clipboard access was blocked. Select and copy the text manually."))}><Copy size={14} />Copy text</Button><Button variant="ghost" disabled={!text} onClick={() => { setText(""); setCorrectionId(""); setLatency(null); setNotice(""); }}>Clear</Button><Button className="learn-action" variant="outline" disabled={!correctionId || !text.trim() || text.length > 300 || !!running} onClick={() => startJob(`/api/corrections/${selected}`, JSON.stringify({ token: correctionId, text: text.replace(/\s+/g, " ").trim() }), { "Content-Type": "application/json" }).catch(error => setError(error.message))}>Save correction</Button></div><p className="supporting">Edit mistakes and save your correction. Local learning starts automatically when idle. Unsaved takes expire after five minutes.</p></section>}
           {page === "Calibration" && <section className="examples"><div className="section-heading"><div><h2>{profile?.samples.length ?? 0} saved examples</h2><p>{distinctExamples < 8 ? `${8 - distinctExamples} more different sentences to start training. Aim for varied sentences.` : "Ready to train. Your current model stays active until a candidate improves."}</p></div><Button disabled={!profile || !ready || distinctExamples < 8 || !!running || !!recording || starting} onClick={() => startJob(`/api/train/${selected}`).catch(error => setError(error.message))}>Train locally</Button></div>{profile?.calibration && <div className="training-result"><strong>{profile.calibration.accepted ? "Personal calibration active" : "Previous model retained"}</strong><p>Word error rate: {(profile.calibration.baseline.wer * 100).toFixed(1)}% → {(profile.calibration.candidate.wer * 100).toFixed(1)}% on {profile.calibration.candidate.words} reserved words.</p><p>{profile.calibration.message}</p>{profile.calibration.replay_baseline && profile.calibration.replay_candidate && <p>Replayed training examples: {(profile.calibration.replay_baseline.wer * 100).toFixed(1)}% → {(profile.calibration.replay_candidate.wer * 100).toFixed(1)}% word error. This measures remembered examples, not new sentences.</p>}</div>}{!!profile?.samples.length && <details className="example-details"><summary>View saved sentences</summary><ol className="example-list">{profile.samples.map((sample, index) => <li key={sample.id}><span className="example-number">{index + 1}</span><span>{sample.text}</span><span className="sample-duration">{(sample.frames / 25).toFixed(1)}s</span></li>)}</ol></details>}<p className="supporting">Training uses your saved examples and corrections. Reserved sentences check whether the update helps. More examples may be needed.</p></section>}
-          {page === "Settings" && <div className="settings"><section><h2>Profiles</h2><form onSubmit={addProfile}><label htmlFor="profile-name">New profile name</label><div className="input-action"><input id="profile-name" required maxLength={60} value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={!name.trim()}>Create profile</Button></div></form>{profiles.map(item => <div className="profile-row" key={item.id}><form className="profile-edit" onSubmit={async event => { event.preventDefault(); const name = new FormData(event.currentTarget).get("name"); try { await request(`/api/profiles/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); await refresh(); setNotice("Profile name saved."); } catch (error) { setError((error as Error).message); } }}><label htmlFor={`rename-${item.id}`}>Profile name</label><div className="input-action"><input id={`rename-${item.id}`} name="name" defaultValue={item.name} maxLength={60} required /><Button type="submit" variant="outline" disabled={!!running}>Save name</Button></div><p>{item.samples.length} saved examples</p></form><Button variant="destructive" disabled={!!running} onClick={async () => { if (!window.confirm(`Delete ${item.name}'s profile, examples and calibration from this laptop?`)) return; try { await request(`/api/profiles/${item.id}`, { method: "DELETE" }); await refresh(); } catch (error) { setError((error as Error).message); } }}>Delete profile</Button></div>)}</section><section><h2>Model and privacy</h2><p>Auto-AVSR is the pretrained lip-reading model. Browser mode adapts a small decoder token adapter using your approved examples; Python mode adapts the visual frontend. Browser decoding uses attention beam search without the external language model.</p><p>{isBrowserRuntime() ? "Approved references, encoded mouth features and personal word preferences are saved in this browser. Full video is released after processing. Unsaved correction features expire after five minutes. Clearing site data deletes your profiles." : "Dictation keeps only mouth crops temporarily for corrections. Spoken-reference audio and full-face recordings are discarded after processing. Only explicitly saved examples persist in .local/profiles."}</p><p>{isBrowserRuntime() ? "The microphone is disabled in browser mode. Type references for calibration. Recognition and learning run on this laptop." : "The microphone is used only when you choose Record spoken reference. Recognition and training run locally."}</p></section></div>}
+          {page === "Settings" && <div className="settings"><section><h2>Profiles</h2><form onSubmit={addProfile}><label htmlFor="profile-name">New profile name</label><div className="input-action"><input id="profile-name" required maxLength={60} value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={!name.trim() || !!running}>Create profile</Button></div></form>{profiles.map(item => <div className="profile-row" key={item.id}><form className="profile-edit" onSubmit={async event => { event.preventDefault(); const name = new FormData(event.currentTarget).get("name"); try { await request(`/api/profiles/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); await refresh(); setNotice("Profile name saved."); } catch (error) { setError((error as Error).message); } }}><label htmlFor={`rename-${item.id}`}>Profile name</label><div className="input-action"><input id={`rename-${item.id}`} name="name" defaultValue={item.name} maxLength={60} required /><Button type="submit" variant="outline" disabled={!!running}>Save name</Button></div><p>{item.samples.length} saved examples</p></form><Button variant="destructive" disabled={!!running} onClick={async () => { if (!window.confirm(`Delete ${item.name}'s profile, examples and calibration from this laptop?`)) return; try { await request(`/api/profiles/${item.id}`, { method: "DELETE" }); await refresh(); } catch (error) { setError((error as Error).message); } }}>Delete profile</Button></div>)}</section><section><h2>Model and privacy</h2><p>Auto-AVSR is the pretrained lip-reading model. Browser mode trains a small decoder adapter conditioned on visual features using your approved examples; Python mode adapts the visual frontend. Browser decoding uses attention beam search without the external language model.</p><p>{isBrowserRuntime() ? "Approved references, encoded mouth features and personal word preferences are saved in this browser. Full video is released after processing. Unsaved correction features expire after five minutes. Clearing site data deletes your profiles." : "Dictation keeps only mouth crops temporarily for corrections. Spoken-reference audio and full-face recordings are discarded after processing. Only explicitly saved examples persist in .local/profiles."}</p><p>{isBrowserRuntime() ? "The microphone is used only for spoken training. Local Whisper provides an editable reference; recognition and learning run on this laptop." : "The microphone is used only for spoken training. Recognition and training run locally."}</p></section></div>}
         </div>
       </main>
     </SidebarProvider>

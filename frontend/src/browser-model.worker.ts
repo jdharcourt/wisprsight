@@ -1,6 +1,6 @@
 import { env, InferenceSession, Tensor } from 'onnxruntime-web/webgpu';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import { tokenize, adjustedScores, biasGradient, wordErrors } from './browser-decoder';
+import { tokenize, adjustedScores, biasGradient, wordErrors, visualFeatures } from './browser-decoder';
 
 type Manifest = { version: number; graphs: Record<string, { file: string; sha256: string; external: string; chunks: { file: string; bytes: number; sha256: string }[] }>; tokens: string[]; pieces: [string, number][]; reference: number[][]; face: { file: string; sha256: string } };
 type Encoded = { memory: Float32Array; frames: number; version: string };
@@ -162,8 +162,9 @@ async function scores(tokens: number[], encoded: Encoded) {
   return values;
 }
 
-async function decode(encoded: Encoded, bias: Float32Array = new Float32Array(manifest.tokens.length)) {
+async function decode(encoded: Encoded, bias: Float32Array = new Float32Array(manifest.tokens.length), visual?: Float32Array) {
   if (encoded.version !== modelVersion) throw new Error('These examples belong to another browser model. Record new examples.');
+  const features = visual ? visualFeatures(encoded.memory, encoded.frames) : undefined;
   const eos = manifest.tokens.length - 1;
   let beam = [{ ids: [eos], score: 0 }];
   const finished: typeof beam = [];
@@ -171,7 +172,7 @@ async function decode(encoded: Encoded, bias: Float32Array = new Float32Array(ma
     check();
     const next: typeof beam = [];
     for (const path of beam) {
-      const probabilities = adjustedScores(await scores(path.ids, encoded), bias);
+      const probabilities = adjustedScores(await scores(path.ids, encoded), bias, visual, features);
       const top: number[] = [];
       for (let id = 1; id < probabilities.length; id++) {
         if (manifest.tokens[id] === '<unk>') continue;
@@ -192,34 +193,36 @@ async function decode(encoded: Encoded, bias: Float32Array = new Float32Array(ma
   return best.ids.filter(id => id !== eos).map(id => manifest.tokens[id]).join('').replace(/▁/g, ' ').trim().replace(/\s+/g, ' ');
 }
 
-async function train(training: Example[], validation: Example[], previous: Float32Array) {
-  const evaluate = async (samples: Example[], bias: Float32Array) => {
+async function train(training: Example[], validation: Example[], previous: Float32Array, previousVisual = new Float32Array(previous.length * 32)) {
+  const evaluate = async (samples: Example[], bias: Float32Array, visual: Float32Array) => {
     let errors = 0, words = 0;
-    for (const sample of samples) { const count = wordErrors(sample.text, await decode(sample, bias)); errors += count.errors; words += count.words; }
+    for (const sample of samples) { const count = wordErrors(sample.text, await decode(sample, bias, visual)); errors += count.errors; words += count.words; }
     return { errors, words, wer: errors / Math.max(words, 1) };
   };
   progress('Checking your current browser model…');
-  const baseline = await evaluate(validation, previous), replay = training.slice(-3), replayBaseline = await evaluate(replay, previous);
-  const rows: { scores: Float32Array; target: number }[] = [];
+  const baseline = await evaluate(validation, previous, previousVisual), replay = training.slice(-3), replayBaseline = await evaluate(replay, previous, previousVisual);
+  const rows: { scores: Float32Array; target: number; features: Float32Array }[] = [];
   const eos = manifest.tokens.length - 1;
   for (let i = 0; i < training.length; i++) {
     progress(`Preparing local correction learning · example ${i + 1} of ${training.length}`, 0.2);
     const targets = [...tokenize(training[i].text, manifest.pieces, manifest.tokens), eos];
-    for (let token = 0; token < targets.length; token++) rows.push({ scores: await scores([eos, ...targets.slice(0, token)], training[i]), target: targets[token] });
+    for (let token = 0; token < targets.length; token++) rows.push({ scores: await scores([eos, ...targets.slice(0, token)], training[i]), target: targets[token], features: visualFeatures(training[i].memory, training[i].frames) });
   }
+  let bestVisual = previousVisual;
   let best = previous, candidate = baseline, replayCandidate = replayBaseline;
-  const bias = new Float32Array(previous), history = [];
+  const bias = new Float32Array(previous), visual = new Float32Array(previousVisual), history = [];
   for (let step = 0; step < 12; step++) {
     check();
-    const { gradient, loss } = biasGradient(rows, bias);
+    const { gradient, visualGradient, loss } = biasGradient(rows, bias, visual);
+    for (let i = 0; i < visual.length; i++) visual[i] = Math.max(-2, Math.min(2, visual[i] - 2 * visualGradient[i]));
     for (let i = 0; i < bias.length; i++) bias[i] = Math.max(-2, Math.min(2, bias[i] - 2 * gradient[i]));
     if ((step + 1) % 4) continue;
     progress(`Validating browser personalization · check ${(step + 1) / 4} of 3`, 0.4 + step / 24);
-    const measured = await evaluate(validation, bias), replayMeasured = await evaluate(replay, bias);
+    const measured = await evaluate(validation, bias, visual), replayMeasured = await evaluate(replay, bias, visual);
     history.push({ step: step + 1, loss, validation: measured, replay: replayMeasured });
-    if ((baseline.errors - measured.errors >= 2 || (measured.errors <= baseline.errors && replayBaseline.errors - replayMeasured.errors >= 2)) && (best === previous || measured.errors < candidate.errors || (measured.errors === candidate.errors && replayMeasured.errors < replayCandidate.errors))) { best = new Float32Array(bias); candidate = measured; replayCandidate = replayMeasured; }
+    if ((baseline.errors - measured.errors >= 2 || (measured.errors <= baseline.errors && replayBaseline.errors - replayMeasured.errors >= 2)) && (best === previous || measured.errors < candidate.errors || (measured.errors === candidate.errors && replayMeasured.errors < replayCandidate.errors))) { best = new Float32Array(bias); bestVisual = new Float32Array(visual); candidate = measured; replayCandidate = replayMeasured; }
   }
-  return { bias: best, calibration: { baseline, candidate, replay_baseline: replayBaseline, replay_candidate: replayCandidate, history, accepted: best !== previous, message: best !== previous ? 'Browser personalization activated.' : 'Previous browser model kept. No measured improvement without a validation regression.', validation_sentences: validation.length, training_sentences: training.length } };
+  return { bias: best, visual: bestVisual, calibration: { baseline, candidate, replay_baseline: replayBaseline, replay_candidate: replayCandidate, history, accepted: best !== previous, message: best !== previous ? 'Browser personalization activated.' : 'Previous browser model kept. No measured improvement without a validation regression.', validation_sentences: validation.length, training_sentences: training.length } };
 }
 
 self.onmessage = async (event: MessageEvent) => {
@@ -232,8 +235,8 @@ self.onmessage = async (event: MessageEvent) => {
     else if (method === 'reset') { frames = []; result = {}; }
     else if (method === 'frame') result = collect(args.bitmap, args.time);
     else if (method === 'encode') result = await encode(args.crops);
-    else if (method === 'decode') result = await decode(args.encoded, args.bias);
-    else if (method === 'train') result = await train(args.training, args.validation, args.bias);
+    else if (method === 'decode') result = await decode(args.encoded, args.bias, args.visual);
+    else if (method === 'train') result = await train(args.training, args.validation, args.bias, args.visual);
     else if (method === 'scores') result = await scores(args.tokens, args.encoded);
     else throw new Error('Unknown browser model operation.');
     self.postMessage({ id, result });

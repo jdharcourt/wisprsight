@@ -57,6 +57,10 @@ class CorrectionInput(BaseModel):
     text: str = Field(min_length=1, max_length=300, pattern=r"^[\x20-\x7e]+$")
 
 
+class ReferenceInput(BaseModel):
+    text: str = Field(min_length=1, max_length=300, pattern=r"^[\x20-\x7e]+$")
+
+
 @app.middleware("http")
 async def protect(request, call_next):
     global last_activity
@@ -137,9 +141,14 @@ def session(request: Request):
 
 @app.post("/api/profiles")
 def create_profile(body: ProfileInput):
-    if len(engine.profiles()) >= 10:
-        raise HTTPException(400, "This prototype supports up to ten profiles.")
-    return engine.create_profile(body.name)
+    with job_lock:
+        if any(job["status"] == "running" for job in jobs.values()):
+            raise HTTPException(
+                409, "Wait for the current task before creating a profile."
+            )
+        if len(engine.profiles()) >= 10:
+            raise HTTPException(400, "This prototype supports up to ten profiles.")
+        return engine.create_profile(body.name)
 
 
 @app.delete("/api/profiles/{profile_id}")
@@ -213,10 +222,11 @@ def start_job(kind, operation, *args, automatic=False):
         jobs[job_id] = job
 
     def run():
+        global last_activity
         try:
             result = (
                 operation(*args, job, cancelled)
-                if kind == "train"
+                if kind in {"train", "teach"}
                 else operation(*args)
             )
             outcome = {
@@ -242,6 +252,8 @@ def start_job(kind, operation, *args, automatic=False):
                     )
                 except (ValueError, OSError):
                     logging.error("Could not update automatic learning state")
+            if kind == "teach":
+                last_activity = time.monotonic()
             job.update(outcome)
 
     executor.submit(run)
@@ -297,6 +309,29 @@ async def transcribe(profile_id: UUID, request: Request):
 @app.post("/api/label")
 async def label(request: Request):
     return start_job("label", engine.label_audio, await media_body(request))
+
+
+@app.post("/api/teach/{profile_id}")
+async def teach(profile_id: UUID, request: Request):
+    reference = request.headers.get("x-reference", "")
+    if len(reference) > 300 or not reference.isascii():
+        raise HTTPException(400, "Use an English reference of at most 300 characters.")
+    return start_job(
+        "teach", engine.teach, await media_body(request), str(profile_id), reference
+    )
+
+
+@app.patch("/api/samples/{profile_id}/{sample_id}")
+def revise_sample(profile_id: UUID, sample_id: UUID, body: ReferenceInput):
+    with job_lock:
+        if any(job["status"] == "running" for job in jobs.values()):
+            raise HTTPException(
+                409, "Wait for the current task before editing an example."
+            )
+        try:
+            return engine.revise_sample(str(profile_id), str(sample_id), body.text)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
 
 
 @app.post("/api/samples/{profile_id}")

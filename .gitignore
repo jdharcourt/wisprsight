@@ -32,3 +32,5 @@ frontend/dist/
 frontend/public/browser-model/
 frontend/public/vision/
 frontend/public/ort/
+
+frontend/public/speech-ort/
