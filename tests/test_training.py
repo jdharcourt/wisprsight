@@ -1,13 +1,17 @@
 import threading
 
 import numpy as np
+import pytest
 import torch
 
 from wisprsight import engine
 
 
+@pytest.mark.parametrize(
+    "sentence_count,replay_only", [(8, False), (11, False), (24, False), (11, True)]
+)
 def test_training_reserves_sentences_and_only_activates_improvement(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, sentence_count, replay_only
 ):
     from lipflow import train_vsr
 
@@ -15,7 +19,7 @@ def test_training_reserves_sentences_and_only_activates_improvement(
     monkeypatch.setattr(engine, "verify_models", lambda: None)
     profile = engine.create_profile("Test person")
     references = {}
-    for index in range(24):
+    for index in range(sentence_count):
         text = f"sentence {chr(97 + index)} I would like to write a clear and simple message to my friend today"
         sample = {"id": str(index), "text": text, "frames": 25}
         profile["samples"].append(sample)
@@ -40,9 +44,19 @@ def test_training_reserves_sentences_and_only_activates_improvement(
         def __init__(self):
             self.model = model
 
+        def to_tensor(self, crops):
+            return crops
+
         def read(self, crops):
             words = references[int(crops[0, 0, 0])].split()
-            return " ".join(words if trained else words[:-3]), 0
+            reserved = (
+                " ".join(engine.normalize(references[int(crops[0, 0, 0])]))
+                in engine.read_profile(profile["id"])["validation_keys"]
+            )
+            improved = trained and len(trained) <= sentence_count - 3
+            return " ".join(
+                words if improved or (replay_only and reserved) else words[:-3]
+            ), 0
 
     monkeypatch.setattr(engine, "make_reader", lambda profile_id, fresh: Reader())
     monkeypatch.setattr(
@@ -54,6 +68,7 @@ def test_training_reserves_sentences_and_only_activates_improvement(
     monkeypatch.setattr(train_vsr, "_augment", lambda crops: crops)
 
     def loss(reader, crops, text):
+        assert not reader.model.training
         trained.append(int(crops[0, 0, 0]))
         return model.encoder.frontend.weight.square().sum()
 
@@ -65,11 +80,19 @@ def test_training_reserves_sentences_and_only_activates_improvement(
         for index, text in references.items()
         if " ".join(engine.normalize(text)) in saved["validation_keys"]
     }
-    assert len(validation) == 6
+    assert len(validation) == 3
     assert not validation.intersection(trained)
     assert result["accepted"]
+    metric = "replay" if replay_only else "validation"
+    assert (
+        result["history"][0][metric]["errors"] < result["history"][1][metric]["errors"]
+    )
     active = engine.profile_path(profile["id"]) / "active.pth"
     assert active.exists()
+    assert not torch.equal(
+        torch.load(active, weights_only=True)["encoder.frontend.weight"],
+        model.encoder.frontend.weight,
+    )
     original = active.read_bytes()
     result = engine.train_profile(profile["id"], {}, threading.Event())
     assert not result["accepted"]
@@ -83,7 +106,7 @@ def test_short_references_fail_before_model_loading(tmp_path, monkeypatch):
     profile = engine.create_profile("Test person")
     profile["samples"] = [
         {"id": str(index), "text": f"word {chr(97 + index)} three", "frames": 25}
-        for index in range(18)
+        for index in range(8)
     ]
     engine.write_json(engine.profile_path(profile["id"]) / "profile.json", profile)
 
@@ -93,7 +116,7 @@ def test_short_references_fail_before_model_loading(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr(engine, "make_reader", unexpected)
-    with pytest.raises(ValueError, match="sixty words"):
+    with pytest.raises(ValueError, match="thirty words"):
         engine.train_profile(profile["id"], {}, threading.Event())
     assert "validation_keys" not in engine.read_profile(profile["id"])
 

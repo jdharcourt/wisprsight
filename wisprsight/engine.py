@@ -351,15 +351,15 @@ def word_errors(reference, hypothesis):
 
 def train_profile(profile_id, job, cancelled):
     import torch
-    from lipflow.train_vsr import _augment, _targets, clip_loss, trainable
+    from lipflow.train_vsr import _targets, clip_loss, trainable
 
     profile = read_profile(profile_id)
     groups = {}
     for sample in profile["samples"]:
         groups.setdefault(" ".join(normalize(sample["text"])), []).append(sample)
-    if len(groups) < 18:
+    if len(groups) < 8:
         raise ValueError(
-            "Save at least eighteen different silent sentences before training."
+            "Save at least eight different silent sentences before training."
         )
     validation_keys = profile.get("validation_keys")
     if not validation_keys:
@@ -367,14 +367,14 @@ def train_profile(profile_id, job, cancelled):
         words = 0
         for key in sorted(
             groups, key=lambda key: hashlib.sha256(key.encode()).hexdigest()
-        )[:-8]:
+        )[:-5]:
             validation_keys.append(key)
             words += len(normalize(groups[key][0]["text"]))
-            if len(validation_keys) >= 6 and words >= 60:
+            if len(validation_keys) >= 3 and words >= 30:
                 break
-        if len(validation_keys) < 6 or words < 60:
+        if len(validation_keys) < 3 or words < 30:
             raise ValueError(
-                "Add more or longer sentences before training. At least sixty words must be reserved for validation while eight different sentences remain for training."
+                "Add more or longer sentences before training. At least thirty words must be reserved for validation while five different sentences remain for training."
             )
         profile["validation_keys"] = validation_keys
         write_json(profile_path(profile_id) / "profile.json", profile)
@@ -385,7 +385,7 @@ def train_profile(profile_id, job, cancelled):
         if key not in validation_keys
         for sample in samples
     ]
-    if len(training) < 8 or len(validation) < 6:
+    if len(training) < 5 or len(validation) < 3:
         raise ValueError(
             "Add more different sentences to provide training and validation examples."
         )
@@ -393,9 +393,9 @@ def train_profile(profile_id, job, cancelled):
     reader = make_reader(profile_id, fresh=True)
     start = time.monotonic()
 
-    def evaluate():
+    def evaluate(samples):
         errors = words = 0
-        for sample in validation:
+        for sample in samples:
             if cancelled.is_set():
                 raise ValueError(
                     "Training cancelled. Your previous calibration is unchanged."
@@ -411,21 +411,22 @@ def train_profile(profile_id, job, cancelled):
         return {"errors": errors, "words": words, "wer": errors / max(words, 1)}
 
     job["message"] = "Measuring your current model on reserved sentences"
-    baseline = evaluate()
+    baseline = evaluate(validation)
+    replay = training[-3:]
+    replay_baseline = evaluate(replay)
+    candidate, replay_candidate = baseline, replay_baseline
+    best_state = None
+    history = []
     reader.model.decoder.to(reader.enc_device)
     reader.model.ctc.to(reader.enc_device)
     reader.model.criterion.to(reader.enc_device)
     parameters = trainable(reader, "frontend")
-    optimizer = torch.optim.AdamW(parameters, lr=1e-5, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(parameters, lr=2e-6, weight_decay=1e-4)
     torch.manual_seed(0)
     for epoch in range(3):
-        reader.model.train()
-        for module in reader.model.modules():
-            if isinstance(
-                module,
-                (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d),
-            ):
-                module.eval()
+        reader.model.eval()
+        losses = []
+        optimizer.zero_grad(set_to_none=True)
         for index, sample in enumerate(training):
             if cancelled.is_set() or time.monotonic() - start > 1200:
                 raise ValueError(
@@ -437,45 +438,75 @@ def train_profile(profile_id, job, cancelled):
             crops = np.load(
                 profile_path(profile_id) / f"{sample['id']}.npy", allow_pickle=False
             )
-            optimizer.zero_grad(set_to_none=True)
-            loss = clip_loss(reader, _augment(crops), _targets(reader, sample["text"]))
+            loss = clip_loss(
+                reader, reader.to_tensor(crops), _targets(reader, sample["text"])
+            )
             if not torch.isfinite(loss):
                 raise ValueError(
                     "Training became unstable. Your previous calibration is unchanged."
                 )
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(parameters, 5)
-            optimizer.step()
+            losses.append(float(loss.detach()))
+            batch_size = min(4, len(training) - (index // 4) * 4)
+            (loss / batch_size).backward()
+            if (index + 1) % 4 == 0 or index + 1 == len(training):
+                torch.nn.utils.clip_grad_norm_(parameters, 1)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+        reader.model.eval()
+        job["message"] = f"Validating epoch {epoch + 1} of 3"
+        measured = evaluate(validation)
+        replay_measured = evaluate(replay)
+        history.append(
+            {
+                "epoch": epoch + 1,
+                "loss": sum(losses) / len(losses),
+                "validation": measured,
+                "replay": replay_measured,
+            }
+        )
+        if (
+            measured["words"] >= 30
+            and (
+                baseline["errors"] - measured["errors"]
+                >= max(2, math.ceil(measured["words"] * 0.02))
+                or (
+                    measured["errors"] <= baseline["errors"]
+                    and replay_baseline["errors"] - replay_measured["errors"] >= 2
+                )
+            )
+            and (
+                best_state is None
+                or (measured["errors"], replay_measured["errors"])
+                < (candidate["errors"], replay_candidate["errors"])
+            )
+        ):
+            candidate, replay_candidate = measured, replay_measured
+            best_state = {
+                key: value.detach().cpu().clone()
+                for key, value in reader.model.state_dict().items()
+                if key.startswith("encoder.frontend.")
+            }
         job["progress"] = round((epoch + 1) / 3, 2)
-    reader.model.eval()
-    reader.model.decoder.to(reader.device)
-    reader.model.ctc.to(reader.device)
-    job["message"] = "Checking the candidate on reserved sentences"
-    candidate = evaluate()
     if cancelled.is_set():
         raise ValueError("Training cancelled. Your previous calibration is unchanged.")
-    accepted = candidate["words"] >= 60 and baseline["errors"] - candidate[
-        "errors"
-    ] >= max(2, math.ceil(candidate["words"] * 0.02))
+    accepted = best_state is not None
     if accepted:
-        state = {
-            key: value.detach().cpu()
-            for key, value in reader.model.state_dict().items()
-            if key.startswith("encoder.frontend.")
-        }
-        torch.save(state, profile_path(profile_id) / "candidate.pth")
+        torch.save(best_state, profile_path(profile_id) / "candidate.pth")
         (profile_path(profile_id) / "candidate.pth").replace(
             profile_path(profile_id) / "active.pth"
         )
     result = {
         "baseline": baseline,
         "candidate": candidate,
+        "replay_baseline": replay_baseline,
+        "replay_candidate": replay_candidate,
+        "history": history,
         "accepted": accepted,
         "validation_sentences": len(validation),
         "training_sentences": len(training),
         "message": "Personal model activated."
         if accepted
-        else "Previous model kept. Add more varied sentences; at least sixty validation words and a clear improvement are required.",
+        else "Previous model kept. No tested update improved reserved sentences or replayed examples without a validation regression.",
     }
     profile["calibration"] = result
     profile["learning_pending"] = False

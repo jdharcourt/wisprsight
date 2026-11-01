@@ -9,7 +9,7 @@ page.on("console", message => { if (message.type() === "error" && !message.text(
 const id = "33333333-3333-4333-8333-333333333333";
 const sampleJob = "44444444-4444-4444-8444-444444444444";
 const trainJob = "55555555-5555-4555-8555-555555555555";
-const profile = { id, name: "Automatic calibration test", samples: Array.from({ length: 21 }, (_, index) => ({ id: String(index), text: `Existing example ${String.fromCharCode(97 + index)} includes enough different words for calibration today`, frames: 80 })), calibration: null };
+const profile = { id, name: "Automatic calibration test", samples: Array.from({ length: 5 }, (_, index) => ({ id: String(index), text: `Existing example ${String.fromCharCode(97 + index)} includes enough different words for calibration today`, frames: 80 })), calibration: null };
 let saved = 0;
 let trained = 0;
 await page.route("**/api/activity", route => route.fulfill({ json: { recording: true } }));

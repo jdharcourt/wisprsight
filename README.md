@@ -24,16 +24,16 @@ The first model download is about 1.2 GB, plus the Python environment and downlo
 
 1. Create a profile, open Calibration, and choose Start calibration.
 2. Mouth the displayed sentence silently. Local camera tracking detects articulation followed by a pause; the take saves and the next sentence slides into view. Use Done if you want to end a take manually.
-3. Complete the remaining prompts toward 24 different sentences. The camera turns off and local training starts automatically after the final sentence.
+3. Complete the remaining prompts toward 8 different sentences. The camera turns off and local training starts automatically after the final sentence.
 4. Review the result, then choose Start dictating.
 
 To add your own material, choose Add a custom sentence instead. You can type/edit a reference or record a spoken reference with the microphone; local Whisper supplies a draft label. Review it, record a silent take, then save it.
 
 Personal training runs on the CPU to avoid Metal command-buffer failures during longer backward passes. Dictation retains automatic GPU acceleration.
 
-To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example, and local CPU learning queues automatically after 30 seconds without recording. Corrections are batched, and at least 18 different sentences are required. Training progress appears automatically; you can cancel it. Dictation pauses while training uses the local model. A candidate replaces the current model only when reserved-sentence validation improves. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
+To teach a correction, edit a dictation's text and choose Save correction. Its temporary mouth crops become a labeled example, and local CPU learning queues automatically after 30 seconds without recording. Corrections are batched, and at least 8 different sentences are required. Training progress appears automatically; you can cancel it. Dictation pauses while training uses the local model. Each epoch is checked. The best candidate activates only when reserved-sentence errors improve, or replayed examples improve without worsening reserved-sentence errors. At least three distinct sentences and thirty words stay outside training. Replayed-example scores measure familiar examples, not general accuracy. This is supervised fine-tuning, not reinforcement learning. Unsaved correction takes expire after five minutes.
 
-A personal model replaces your current model only after a clear validation improvement across at least 60 reference words. Otherwise your existing model stays active. Profiles and calibration data remain in `.local/profiles/`; deleting a profile removes its examples and personal weights. The microphone is never requested for ordinary dictation.
+A personal update must improve reserved-sentence errors by at least two words or two percent, or improve replayed-example errors by at least two words without increasing reserved-sentence errors. Otherwise the existing model stays active. Profiles and calibration data remain in `.local/profiles/`; deleting a profile removes its examples and personal weights. The microphone is never requested for ordinary dictation.
 
 ## Status and evidence
 

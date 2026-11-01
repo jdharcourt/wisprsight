@@ -14,7 +14,7 @@ Laptop users who want to dictate English sentences silently while facing their o
 
 ## Workflow
 
-Every user starts with the shared pretrained Auto-AVSR model and creates a local profile. Calibration is a full-screen sequence: mouth one sentence, let local mouth-motion tracking detect the finishing pause, and advance to the next prompt. Examples save automatically during the explicitly started session. After the remaining prompts complete a set of 24 distinct sentences, the camera switches off and Python training starts automatically. A Done button provides manual endpoint control.
+Every user starts with the shared pretrained Auto-AVSR model and creates a local profile. Calibration is a full-screen sequence: mouth one sentence, let local mouth-motion tracking detect the finishing pause, and advance to the next prompt. Examples save automatically during the explicitly started session. After the remaining prompts complete a set of 8 distinct sentences, the camera switches off and Python training starts automatically. A Done button provides manual endpoint control.
 
 Users can add custom examples with a spoken reference transcribed by local Whisper, or type/edit the reference. Dictation results use Title Case. Editing a transcription and choosing Save correction stores that take's mouth crops with the approved text for subsequent supervised fine-tuning. Ordinary dictation never requests the microphone.
 

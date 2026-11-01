@@ -15,7 +15,7 @@ Start by selectively reusing Lipflow's inference, preprocessing and adaptation i
 ## Browser flows
 
 - Dictate: choose a profile, record a short silent sentence, then edit/copy the Title Case transcript. Save correction stores that take's mouth crops with approved text as a training example.
-- Calibrate: start a full-screen camera-only session. Each prompt is displayed in large readable type; local WASM landmarks detect articulation and its finishing pause. The take saves automatically and the screen slides to the next sentence. A Done control and retry path support manual endpoint correction. Remaining prompts complete a target of 24 different sentences.
+- Calibrate: start a full-screen camera-only session. Each prompt is displayed in large readable type; local WASM landmarks detect articulation and its finishing pause. The take saves automatically and the screen slides to the next sentence. A Done control and retry path support manual endpoint correction. Remaining prompts complete a target of 8 different sentences.
 - Train: the camera switches off and Python training starts automatically after the final saved prompt. Reserve validation sentences before fitting; activate a candidate only after sufficient evidence of improvement over the incumbent. Custom spoken references, typed references and manual training remain available.
 - Manage: select, rename or delete local profiles; see example count and training status. No cloud account.
 
@@ -23,7 +23,7 @@ Start by selectively reusing Lipflow's inference, preprocessing and adaptation i
 
 Use UUID profile/sample identifiers and local owner-only storage. Persist mouth crops and approved references on explicit example/correction saving, or automatically within a deliberately started calibration session; discard full-face footage and audio after processing. Persist training summaries without private sentences. Separate users' artifacts. Never train on the validation split. Repeated reference sentences belong to one split. Use fresh sentences across sessions for a later independent acceptance test; validation used for candidate selection is not an unbiased final benchmark.
 
-Initial calibration target: at least 18 distinct silent sentences, with at least 6 reserved for validation. This is an engineering starting point, not a claim that 18 examples guarantee useful personalization. Show repeat prompts or request more data when sample diversity is insufficient. Target about 30-50 varied examples for a stronger personal calibration experiment.
+Initial calibration target: eight distinct silent sentences, with at least three sentences and thirty words reserved for validation while five sentences remain for training. This is an engineering starting point, not a guarantee of useful personalization. Show repeat prompts or request more data when sample diversity is insufficient. Target about 30-50 varied examples for a stronger personal calibration experiment.
 
 Measure raw-model word error rate, preprocessing time, inference time, memory use and failure rate separately. Any later text cleanup must remain local and be evaluated separately. Never present decoder scores as calibrated accuracy probabilities.
 

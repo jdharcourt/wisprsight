@@ -73,7 +73,7 @@ await page.getByLabel("Transcript", { exact: true }).fill("The Correct Sentence"
 await page.getByRole("button", { name: "Save correction", exact: true }).click();
 await expect(page.getByText("Correction saved. Local learning is queued automatically.", { exact: true })).toBeVisible();
 if (!correctionSaved) throw new Error("Correction was not submitted");
-await expect(page.getByText("Correction saved. Automatic learning starts once you have 18 different sentences.", { exact: true })).toBeVisible();
+await expect(page.getByText("Correction saved. Automatic learning starts once you have 8 different sentences.", { exact: true })).toBeVisible();
 await page.getByRole("button", { name: "Camera off", exact: true }).click();
 await page.getByRole("button", { name: "Clear", exact: true }).click();
 await page.screenshot({ path: "../.impeccable/review/desktop.png", fullPage: true });

@@ -264,7 +264,7 @@ def run_pending_learning():
                     for sample in profile["samples"]
                 }
             )
-            < 18
+            < 8
         ):
             continue
         try:
